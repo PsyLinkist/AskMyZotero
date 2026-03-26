@@ -112,31 +112,7 @@ python main.py --interactive-config --rebuild
 
 ---
 
-## 📦 项目目录结构
-
-下面是当前项目的主要目录结构：
-
-```text
-AskMyZotero/
-├─ .askmyzotero/
-├─ dataset/
-├─ src/
-│  ├─ __init__.py
-│  ├─ config.py
-│  ├─ indexer.py
-│  ├─ manifest.py
-│  ├─ parser.py
-│  └─ scanner.py
-├─ tmp/
-├─ .gitignore
-├─ main.py
-├─ README.md
-└─ zotero_rag.py
-```
-
----
-
-## 📄 各文件功能说明
+## 📄 项目目录结构 & 各文件功能说明
 
 ```text
 AskMyZotero/
