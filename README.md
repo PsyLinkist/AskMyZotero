@@ -28,7 +28,7 @@ python -m pip install langchain langchain-community langchain-core dashscope fai
 
 ### 1. 配置通义千问 API Key
 
-在阿里云百炼控制台申请你的 API Key，并替换代码中的对应位置。
+在阿里云百炼控制台左侧“API Key”那一栏，申请你的 API Key，并替换代码中的对应位置。
 
 > **⚠️ 警告**：不要将带有真实 API Key 的代码上传到公开的 GitHub 仓库，以免额度被盗刷！
 
@@ -51,7 +51,7 @@ ZOTERO_PATH = r"D:\ZoteroData\storage"
 
 代码中使用了两个不同的模型，分别负责“阅读”和“回答”：
 
-* **Embedding 模型（文本转向量）**：在 `get_vectorstore()` 函数中，默认配置为 `text-embedding-v3`。如果你的该模型免费额度耗尽，请确保你的阿里云账户有余额并关闭了“用完即停”, **建议先充值一块钱，如果你的本地论文特别多的话**。
+* **Embedding 模型（文本转向量）**：在 `get_vectorstore()` 函数中，默认配置为 `text-embedding-v3`。如果你的该模型免费额度耗尽，请确保你的阿里云账户有余额并关闭了“用完即停”, **建议先充值1块钱，如果你的本地论文特别多的话，直接在头像处的费用与成本点击充值1块**。
 * **LLM 对话模型**：在 `create_chat_chain()` 函数中，默认配置为旗舰模型 `qwen-max`。你可以根据成本和需求将其修改为 `qwen-turbo` 或 `qwen-plus`。
 
 ---
