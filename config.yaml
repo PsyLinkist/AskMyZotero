@@ -1,0 +1,21 @@
+# 基础路径配置
+zotero_path: "/Users/emma/Downloads/tmpzotero"  
+work_dir: ".askmyzotero"
+index_name: "default"
+
+# API 核心配置
+api_key: sk-bJwHqcenNBaw5KzDPNBGsfDE7RhLngfL9Ktv0w5XCvNBztwP             
+base_url: "https://api.key77qiqi.cn/v1" 
+
+# 模型选择
+chat_model: "gpt-4o-mini"
+embedding_model: "text-embedding-3-small" 
+
+# 检索参数
+chunk_size: 1000
+chunk_overlap: 150
+top_k: 5
+temperature: 0.2
+
+# 运行选项
+rebuild: false  

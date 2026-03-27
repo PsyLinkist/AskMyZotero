@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统配置 · Zotero RAG</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f5f3;
+  --color-background-tertiary: #eeede8;
+  --color-text-primary: #1a1a18;
+  --color-text-secondary: #5f5e5a;
+  --color-text-tertiary: #888780;
+  --color-border-tertiary: rgba(0,0,0,0.12);
+  --color-border-secondary: rgba(0,0,0,0.22);
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background-tertiary);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  padding: 2rem 1rem;
+}
+
+.page-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-title {
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: opacity 0.15s;
+}
+
+.btn-primary {
+  background: var(--color-text-primary);
+  color: var(--color-background-primary);
+}
+
+.btn-secondary {
+  background: var(--color-background-secondary);
+  color: var(--color-text-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+}
+
+.btn:hover { opacity: 0.75; }
+.btn:active { opacity: 0.55; transform: scale(0.98); }
+
+.config-section {
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  border-color: var(--color-border-secondary);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.form-help {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 0.5rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 15px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.toggle-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.toggle-label {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle-switch.active {
+  background: var(--color-text-primary);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background: var(--color-background-primary);
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.15s;
+}
+
+.toggle-switch.active::after {
+  transform: translateX(20px);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 10px;
+}
+
+.status-connected {
+  background: var(--color-background-success);
+  color: #27500a;
+}
+
+.status-disconnected {
+  background: var(--color-background-danger);
+  color: #791f1f;
+}
+
+.test-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.test-btn:hover {
+  background: var(--color-background-tertiary);
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="header">
+    <div class="header-title">系统配置</div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="resetConfig()">重置</button>
+      <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">API 配置</div>
+    
+    <div class="form-group">
+      <label class="form-label">后端 API 地址</label>
+      <input type="text" class="form-input" id="apiUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
+      <div class="form-help">RAG 后端服务的 API 地址，用于处理文献查询请求</div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">API 超时时间 (秒)</label>
+        <input type="number" class="form-input" id="apiTimeout" placeholder="30" value="30">
+      </div>
+      <div class="form-group">
+        <label class="form-label">最大重试次数</label>
+        <input type="number" class="form-input" id="maxRetries" placeholder="3" value="3">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">API 密钥 (可选)</label>
+      <input type="password" class="form-input" id="apiKey" placeholder="sk-xxxxxxxxxxxx">
+      <div class="form-help">如果后端 API 需要认证，请输入 API 密钥</div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">Zotero 配置</div>
+    
+    <div class="form-group">
+      <label class="form-label">Zotero API 密钥</label>
+      <input type="password" class="form-input" id="zoteroApiKey" placeholder="在 Zotero 设置中生成 API 密钥">
+      <div class="form-help">从 Zotero 官网获取个人 API 密钥</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Zotero 用户 ID</label>
+      <input type="text" class="form-input" id="zoteroUserId" placeholder="你的 Zotero 用户 ID">
+      <div class="form-help">在 Zotero 设置中可以找到用户 ID</div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">文献库 ID</label>
+        <input type="text" class="form-input" id="libraryId" placeholder="1" value="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">同步间隔 (分钟)</label>
+        <input type="number" class="form-input" id="syncInterval" placeholder="30" value="30">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="toggle-group">
+        <span class="toggle-label">启用自动同步</span>
+        <div class="toggle-switch active" id="autoSync" onclick="toggleSwitch('autoSync')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">搜索参数</div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">最大结果数量</label>
+        <input type="number" class="form-input" id="maxResults" placeholder="10" value="10">
+      </div>
+      <div class="form-group">
+        <label class="form-label">相关度阈值</label>
+        <input type="number" class="form-input" id="relevanceThreshold" placeholder="0.3" value="0.3" step="0.1" min="0" max="1">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">默认排序方式</label>
+      <select class="form-input" id="defaultSort">
+        <option value="relevance">按相关度排序</option>
+        <option value="year">按年份排序</option>
+        <option value="citations">按引用数排序</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <div class="toggle-group">
+        <span class="toggle-label">显示详细摘要</span>
+        <div class="toggle-switch active" id="showAbstract" onclick="toggleSwitch('showAbstract')"></div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="toggle-group">
+        <span class="toggle-label">启用智能搜索建议</span>
+        <div class="toggle-switch active" id="enableSuggestions" onclick="toggleSwitch('enableSuggestions')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">界面设置</div>
+    
+    <div class="form-group">
+      <label class="form-label">界面语言</label>
+      <select class="form-input" id="language">
+        <option value="zh-CN">简体中文</option>
+        <option value="en-US">English</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">主题颜色</label>
+      <select class="form-input" id="theme">
+        <option value="light">浅色主题</option>
+        <option value="dark">深色主题</option>
+        <option value="auto">跟随系统</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <div class="toggle-group">
+        <span class="toggle-label">显示示例查询</span>
+        <div class="toggle-switch active" id="showExamples" onclick="toggleSwitch('showExamples')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">数据存储</div>
+    
+    <div class="form-group">
+      <label class="form-label">缓存策略</label>
+      <select class="form-input" id="cacheStrategy">
+        <option value="memory">内存缓存</option>
+        <option value="localStorage">本地存储</option>
+        <option value="none">不缓存</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">缓存过期时间 (小时)</label>
+        <input type="number" class="form-input" id="cacheExpiry" placeholder="24" value="24">
+      </div>
+      <div class="form-group">
+        <label class="form-label">最大缓存条目</label>
+        <input type="number" class="form-input" id="maxCacheSize" placeholder="100" value="100">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <button class="test-btn" onclick="clearCache()">清除缓存</button>
+      <button class="test-btn" onclick="exportData()">导出数据</button>
+      <button class="test-btn" onclick="importData()">导入数据</button>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="section-title">连接测试</div>
+    
+    <div class="form-group">
+      <label class="form-label">API 连接状态</label>
+      <div style="display: flex; align-items: center;">
+        <span class="status-badge status-disconnected" id="apiStatus">未连接</span>
+        <button class="test-btn" onclick="testApiConnection()">测试连接</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Zotero 连接状态</label>
+      <div style="display: flex; align-items: center;">
+        <span class="status-badge status-disconnected" id="zoteroStatus">未连接</span>
+        <button class="test-btn" onclick="testZoteroConnection()">测试连接</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleSwitch(id) {
+  const element = document.getElementById(id);
+  element.classList.toggle('active');
+}
+
+function saveConfig() {
+  const config = {
+    api: {
+      url: document.getElementById('apiUrl').value,
+      timeout: parseInt(document.getElementById('apiTimeout').value),
+      maxRetries: parseInt(document.getElementById('maxRetries').value),
+      apiKey: document.getElementById('apiKey').value
+    },
+    zotero: {
+      apiKey: document.getElementById('zoteroApiKey').value,
+      userId: document.getElementById('zoteroUserId').value,
+      libraryId: document.getElementById('libraryId').value,
+      syncInterval: parseInt(document.getElementById('syncInterval').value),
+      autoSync: document.getElementById('autoSync').classList.contains('active')
+    },
+    search: {
+      maxResults: parseInt(document.getElementById('maxResults').value),
+      relevanceThreshold: parseFloat(document.getElementById('relevanceThreshold').value),
+      defaultSort: document.getElementById('defaultSort').value,
+      showAbstract: document.getElementById('showAbstract').classList.contains('active'),
+      enableSuggestions: document.getElementById('enableSuggestions').classList.contains('active')
+    },
+    ui: {
+      language: document.getElementById('language').value,
+      theme: document.getElementById('theme').value,
+      showExamples: document.getElementById('showExamples').classList.contains('active')
+    },
+    storage: {
+      cacheStrategy: document.getElementById('cacheStrategy').value,
+      cacheExpiry: parseInt(document.getElementById('cacheExpiry').value),
+      maxCacheSize: parseInt(document.getElementById('maxCacheSize').value)
+    }
+  };
+
+  localStorage.setItem('zoteroRagConfig', JSON.stringify(config));
+  alert('配置已保存！');
+}
+
+function loadConfig() {
+  const savedConfig = localStorage.getItem('zoteroRagConfig');
+  if (savedConfig) {
+    const config = JSON.parse(savedConfig);
+    
+    document.getElementById('apiUrl').value = config.api?.url || 'http://localhost:8000';
+    document.getElementById('apiTimeout').value = config.api?.timeout || 30;
+    document.getElementById('maxRetries').value = config.api?.maxRetries || 3;
+    document.getElementById('apiKey').value = config.api?.apiKey || '';
+    
+    document.getElementById('zoteroApiKey').value = config.zotero?.apiKey || '';
+    document.getElementById('zoteroUserId').value = config.zotero?.userId || '';
+    document.getElementById('libraryId').value = config.zotero?.libraryId || '1';
+    document.getElementById('syncInterval').value = config.zotero?.syncInterval || 30;
+    updateSwitch('autoSync', config.zotero?.autoSync);
+    
+    document.getElementById('maxResults').value = config.search?.maxResults || 10;
+    document.getElementById('relevanceThreshold').value = config.search?.relevanceThreshold || 0.3;
+    document.getElementById('defaultSort').value = config.search?.defaultSort || 'relevance';
+    updateSwitch('showAbstract', config.search?.showAbstract);
+    updateSwitch('enableSuggestions', config.search?.enableSuggestions);
+    
+    document.getElementById('language').value = config.ui?.language || 'zh-CN';
+    document.getElementById('theme').value = config.ui?.theme || 'light';
+    updateSwitch('showExamples', config.ui?.showExamples);
+    
+    document.getElementById('cacheStrategy').value = config.storage?.cacheStrategy || 'memory';
+    document.getElementById('cacheExpiry').value = config.storage?.cacheExpiry || 24;
+    document.getElementById('maxCacheSize').value = config.storage?.maxCacheSize || 100;
+  }
+}
+
+function updateSwitch(id, isActive) {
+  const element = document.getElementById(id);
+  if (isActive) {
+    element.classList.add('active');
+  } else {
+    element.classList.remove('active');
+  }
+}
+
+function resetConfig() {
+  if (confirm('确定要重置所有配置吗？')) {
+    localStorage.removeItem('zoteroRagConfig');
+    location.reload();
+  }
+}
+
+function testApiConnection() {
+  const apiUrl = document.getElementById('apiUrl').value;
+  const statusBadge = document.getElementById('apiStatus');
+  
+  statusBadge.textContent = '测试中...';
+  statusBadge.className = 'status-badge';
+  
+  fetch(`${apiUrl}/health`, { method: 'GET' })
+    .then(response => {
+      if (response.ok) {
+        statusBadge.textContent = '已连接';
+        statusBadge.className = 'status-badge status-connected';
+      } else {
+        throw new Error('连接失败');
+      }
+    })
+    .catch(error => {
+      statusBadge.textContent = '连接失败';
+      statusBadge.className = 'status-badge status-disconnected';
+    });
+}
+
+function testZoteroConnection() {
+  const apiKey = document.getElementById('zoteroApiKey').value;
+  const userId = document.getElementById('zoteroUserId').value;
+  const statusBadge = document.getElementById('zoteroStatus');
+  
+  if (!apiKey || !userId) {
+    alert('请先填写 Zotero API 密钥和用户 ID');
+    return;
+  }
+  
+  statusBadge.textContent = '测试中...';
+  statusBadge.className = 'status-badge';
+  
+  fetch(`https://api.zotero.org/users/${userId}/items?key=${apiKey}&limit=1`)
+    .then(response => {
+      if (response.ok) {
+        statusBadge.textContent = '已连接';
+        statusBadge.className = 'status-badge status-connected';
+      } else {
+        throw new Error('连接失败');
+      }
+    })
+    .catch(error => {
+      statusBadge.textContent = '连接失败';
+      statusBadge.className = 'status-badge status-disconnected';
+    });
+}
+
+function clearCache() {
+  if (confirm('确定要清除所有缓存吗？')) {
+    localStorage.removeItem('zoteroRagCache');
+    alert('缓存已清除');
+  }
+}
+
+function exportData() {
+  const data = {
+    config: JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}'),
+    cache: JSON.parse(localStorage.getItem('zoteroRagCache') || '{}')
+  };
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zotero_rag_backup_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (data.config) {
+          localStorage.setItem('zoteroRagConfig', JSON.stringify(data.config));
+        }
+        if (data.cache) {
+          localStorage.setItem('zoteroRagCache', JSON.stringify(data.cache));
+        }
+        alert('数据导入成功！');
+        location.reload();
+      } catch (error) {
+        alert('导入失败：文件格式错误');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+loadConfig();
+</script>
+</body>
+</html>
