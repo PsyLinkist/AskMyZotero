@@ -1,9 +1,11 @@
 import os
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+# 引入阿里原生组件以进行回退处理和支持
 from langchain_community.embeddings import DashScopeEmbeddings
-from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models.tongyi import ChatTongyi
+from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 # === 适配新版 LangChain 的核心组件 ===
 from langchain_core.runnables import RunnablePassthrough
@@ -12,80 +14,118 @@ import pickle
 
 from tqdm import tqdm
 # ==========================================
-# 1. 配置参数 (请替换为你自己的信息)
+# 1. 配置参数 (默认值)
 # ==========================================
-os.environ["DASHSCOPE_API_KEY"] = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # 替换为你的千问 API Key
-# 新增：强制让 python 访问阿里云时不走系统代理/VPN
+os.environ["DASHSCOPE_API_KEY"] = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # 替换为你的千问 API Key
 os.environ["NO_PROXY"] = "aliyuncs.com,dashscope.aliyuncs.com"
-ZOTERO_PATH = r"D:\ZoteroData\storage" 
+ZOTERO_PATH = r"XXXXXXXXXXXXX"  # 在界面上填
 DB_SAVE_PATH = "zotero_faiss_index"
-SPLITS_CACHE_PATH = "zotero_splits_cache.pkl"  # 新增：文本块缓存文件的路径
+SPLITS_CACHE_PATH = "zotero_splits_cache.pkl"
+
 # ==========================================
 # 2. 构建或加载向量知识库 (带中间状态缓存版)
 # ==========================================
-def get_vectorstore():
+def get_vectorstore(zotero_path=None, api_key=None, base_url=None, embedding_model="text-embedding-v3", status_callback=print, progress_callback=None):
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+    if not zotero_path:
+        zotero_path = ZOTERO_PATH
+
+    # 智能分发逻辑：根据用户填写的 Base URL 选择最优的基础组件
+    if base_url and "dashscope.aliyuncs.com" in base_url:
+        status_callback("🟢 检测到使用阿里云节点，切换至原生 DashScopeEmbeddings 以避免兼容层报错...")
+        embeddings = DashScopeEmbeddings(dashscope_api_key=api_key, model=embedding_model)
+    else:
+        embeddings = OpenAIEmbeddings(openai_api_key=api_key, openai_api_base=base_url, model=embedding_model)
+
     # 第一关：检查是否已经有最终的向量数据库
     if os.path.exists(DB_SAVE_PATH):
-        print("🟢 正在加载已存在的文献向量数据库...")
-        embeddings = DashScopeEmbeddings(model="text-embedding-v3")
+        status_callback("🟢 正在加载已存在的文献向量数据库...")
         vectorstore = FAISS.load_local(DB_SAVE_PATH, embeddings, allow_dangerous_deserialization=True)
         return vectorstore
 
     # 第二关：检查是否有切好的文本块缓存
     if os.path.exists(SPLITS_CACHE_PATH):
-        print(f"🟢 发现文本块缓存文件，跳过 PDF 解析，直接读取...")
+        status_callback(f"🟢 发现文本块缓存文件，跳过 PDF 解析，直接读取...")
         with open(SPLITS_CACHE_PATH, "rb") as f:
             splits = pickle.load(f)
-        print(f"✅ 成功从缓存中加载了 {len(splits)} 个文本块！")
+        status_callback(f"✅ 成功从缓存中加载了 {len(splits)} 个文本块！")
     else:
         # 如果什么都没有，才老老实实去读 PDF
-        print(f"🟡 未发现数据库和缓存，准备扫描目录: {ZOTERO_PATH}")
-        print("⏳ 正在读取 PDF 文件，请观察下方的进度条...")
-        loader = DirectoryLoader(
-            ZOTERO_PATH, 
-            glob="**/*.pdf", 
-            loader_cls=PyPDFLoader, 
-            show_progress=True,
-            use_multithreading=True
-        )
-        docs = loader.load()
-        print(f"\n✅ PDF 读取完毕！共成功提取了 {len(docs)} 页文献内容。")
+        from pathlib import Path
+        pdf_files = list(Path(zotero_path).rglob("*.pdf"))
+        total_files = len(pdf_files)
+        
+        if total_files == 0:
+            status_callback(f"⚠️ 在 {zotero_path} 下没有找到任何 PDF 文件。")
+            return None
+            
+        status_callback(f"🟡 未发现数据库和缓存，扫描目录发现 {total_files} 个 PDF 文件，准备解析...")
+        docs = []
+        for i, pdf_file in enumerate(pdf_files):
+            try:
+                loader = PyPDFLoader(str(pdf_file))
+                docs.extend(loader.load())
+            except Exception as e:
+                pass # 忽略损坏的PDF
+            if progress_callback:
+                # 前 50% 进度用于读取 PDF
+                progress = (i + 1) / total_files * 0.5
+                progress_callback(progress, f"正在读取 PDF文献 ({i+1}/{total_files})...已提取 {len(docs)} 页")
+                
+        status_callback(f"✅ PDF 读取完毕！共成功提取了 {len(docs)} 页文献内容。")
 
-        print("✂️ 正在切割文献文本以适应 AI 的胃口...")
+        status_callback("✂️ 正在切割文献文本以适应 AI 的胃口...")
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
         splits = text_splitter.split_documents(docs)
-        print(f"✅ 文本切割完成！共生成了 {len(splits)} 个文本块。")
+        status_callback(f"✅ 文本切割完成！共生成了 {len(splits)} 个文本块。")
         
         # 【关键新增】将切好的文本块保存到本地硬盘
-        print("💾 正在将切割好的文本块保存到本地缓存文件...")
+        status_callback("💾 正在将切割好的文本块保存到本地缓存文件...")
         with open(SPLITS_CACHE_PATH, "wb") as f:
             pickle.dump(splits, f)
-        print("✅ 文本块缓存保存成功！以后重试就不用再解析 PDF 啦。")
+        status_callback("✅ 文本块缓存保存成功！以后重试就不用再解析 PDF 啦。")
 
     # --- 下面是向量化和上传的逻辑 ---
-    print("☁️ 正在调用千问 API 将文本块转化为向量并存入数据库...")
-    embeddings = DashScopeEmbeddings(model="text-embedding-v3")
+    status_callback(f"☁️ 正在调用 API 将文本块转化为向量({embedding_model})并存入数据库...")
     
     batch_size = 300
     vectorstore = None
     
-    for i in tqdm(range(0, len(splits), batch_size), desc="🚀 向量化上传进度"):
+    total_splits = len(splits)
+    for i in range(0, total_splits, batch_size):
         batch = splits[i : i + batch_size]
         if vectorstore is None:
             vectorstore = FAISS.from_documents(documents=batch, embedding=embeddings)
         else:
             vectorstore.add_documents(batch)
             
+        if progress_callback:
+            # 后 50% 进度用于向API上传 embedding
+            # 判断是在解析PDF后调用，还是读取缓存后直接调用的。
+            # 为了平滑，如果是缓存加载直接占100%区间，不过就用参数传文字吧
+            uploaded_count = min(i + batch_size, total_splits)
+            base_progress = 0.5 if 'Docs' in locals() or 'docs' in locals() else 0.0
+            scale = 0.5 if 'Docs' in locals() or 'docs' in locals() else 1.0
+            
+            current_progress = base_progress + (uploaded_count / total_splits) * scale
+            progress_callback(current_progress, f"向量化并上传进度: {uploaded_count}/{total_splits} 个文本块")
+            
     vectorstore.save_local(DB_SAVE_PATH)
-    print("🎉 数据库构建并保存完毕！以后启动就是秒开了。")
+    status_callback("🎉 数据库构建并保存完毕！以后启动就是秒开了。")
     return vectorstore
 
 # ==========================================
 # 3. 初始化 RAG 对话链 (加入中间状态拦截日志)
 # ==========================================
-def create_chat_chain(vectorstore):
-    # 请确保这里的模型是你目前有额度、且支持文本的，比如 qwen-max
-    llm = ChatTongyi(model="qwen-max") 
+def create_chat_chain(vectorstore, api_key=None, base_url=None, chat_model="qwen-max"):
+    # 为了解决千问直接接入 OpenAI 兼容层时偶发的 input.contents 报 400 格式错误
+    # 我们做一次优雅的智能降级分发
+    if base_url and "dashscope.aliyuncs.com" in base_url:
+        llm = ChatTongyi(dashscope_api_key=api_key, model=chat_model)
+    else:
+        llm = ChatOpenAI(api_key=api_key, base_url=base_url, model=chat_model) 
+        
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4}) # 只把最相关的前 4 个文本块提取出来
 
     system_prompt = (
