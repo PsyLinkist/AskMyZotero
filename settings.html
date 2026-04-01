@@ -10,6 +10,8 @@
   --color-background-primary: #ffffff;
   --color-background-secondary: #f5f5f3;
   --color-background-tertiary: #eeede8;
+  --color-background-success: #e7f4da;
+  --color-background-danger: #fde8e8;
   --color-text-primary: #1a1a18;
   --color-text-secondary: #5f5e5a;
   --color-text-tertiary: #888780;
@@ -232,165 +234,41 @@ body {
   <div class="header">
     <div class="header-title">系统配置</div>
     <div class="header-actions">
+      <button class="btn btn-secondary" onclick="goToMainPage()">返回</button>
       <button class="btn btn-secondary" onclick="resetConfig()">重置</button>
       <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
     </div>
   </div>
 
   <div class="config-section">
-    <div class="section-title">API 配置</div>
-    
+    <div class="section-title">RAG 引擎配置</div>
+
     <div class="form-group">
-      <label class="form-label">后端 API 地址</label>
-      <input type="text" class="form-input" id="apiUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
-      <div class="form-help">RAG 后端服务的 API 地址，用于处理文献查询请求</div>
+      <label class="form-label">PDF 文件夹地址（zotero_path）</label>
+      <input type="text" class="form-input" id="ragZoteroPath" placeholder="D:/Download/pdfs">
+      <div class="form-help">本地 PDF 文件夹路径，将写入后端 config.yaml 的 zotero_path</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">模型 API Key</label>
+      <input type="password" class="form-input" id="ragApiKey" placeholder="sk-xxxxxxxxxxxx" autocomplete="new-password">
+      <div class="form-help">仅在填写时才会更新后端 API Key；留空表示不改动当前 Key</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">模型 Base URL</label>
+      <input type="text" class="form-input" id="ragBaseUrl" placeholder="https://api.openai.com/v1">
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">API 超时时间 (秒)</label>
-        <input type="number" class="form-input" id="apiTimeout" placeholder="30" value="30">
+        <label class="form-label">聊天模型（chat_model）</label>
+        <input type="text" class="form-input" id="ragChatModel" placeholder="gpt-4o-mini">
       </div>
       <div class="form-group">
-        <label class="form-label">最大重试次数</label>
-        <input type="number" class="form-input" id="maxRetries" placeholder="3" value="3">
+        <label class="form-label">向量模型（embedding_model）</label>
+        <input type="text" class="form-input" id="ragEmbeddingModel" placeholder="text-embedding-3-small">
       </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">API 密钥 (可选)</label>
-      <input type="password" class="form-input" id="apiKey" placeholder="sk-xxxxxxxxxxxx">
-      <div class="form-help">如果后端 API 需要认证，请输入 API 密钥</div>
-    </div>
-  </div>
-
-  <div class="config-section">
-    <div class="section-title">Zotero 配置</div>
-    
-    <div class="form-group">
-      <label class="form-label">Zotero API 密钥</label>
-      <input type="password" class="form-input" id="zoteroApiKey" placeholder="在 Zotero 设置中生成 API 密钥">
-      <div class="form-help">从 Zotero 官网获取个人 API 密钥</div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Zotero 用户 ID</label>
-      <input type="text" class="form-input" id="zoteroUserId" placeholder="你的 Zotero 用户 ID">
-      <div class="form-help">在 Zotero 设置中可以找到用户 ID</div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">文献库 ID</label>
-        <input type="text" class="form-input" id="libraryId" placeholder="1" value="1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">同步间隔 (分钟)</label>
-        <input type="number" class="form-input" id="syncInterval" placeholder="30" value="30">
-      </div>
-    </div>
-
-    <div class="form-group">
-      <div class="toggle-group">
-        <span class="toggle-label">启用自动同步</span>
-        <div class="toggle-switch active" id="autoSync" onclick="toggleSwitch('autoSync')"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="config-section">
-    <div class="section-title">搜索参数</div>
-    
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">最大结果数量</label>
-        <input type="number" class="form-input" id="maxResults" placeholder="10" value="10">
-      </div>
-      <div class="form-group">
-        <label class="form-label">相关度阈值</label>
-        <input type="number" class="form-input" id="relevanceThreshold" placeholder="0.3" value="0.3" step="0.1" min="0" max="1">
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">默认排序方式</label>
-      <select class="form-input" id="defaultSort">
-        <option value="relevance">按相关度排序</option>
-        <option value="year">按年份排序</option>
-        <option value="citations">按引用数排序</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <div class="toggle-group">
-        <span class="toggle-label">显示详细摘要</span>
-        <div class="toggle-switch active" id="showAbstract" onclick="toggleSwitch('showAbstract')"></div>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <div class="toggle-group">
-        <span class="toggle-label">启用智能搜索建议</span>
-        <div class="toggle-switch active" id="enableSuggestions" onclick="toggleSwitch('enableSuggestions')"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="config-section">
-    <div class="section-title">界面设置</div>
-    
-    <div class="form-group">
-      <label class="form-label">界面语言</label>
-      <select class="form-input" id="language">
-        <option value="zh-CN">简体中文</option>
-        <option value="en-US">English</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">主题颜色</label>
-      <select class="form-input" id="theme">
-        <option value="light">浅色主题</option>
-        <option value="dark">深色主题</option>
-        <option value="auto">跟随系统</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <div class="toggle-group">
-        <span class="toggle-label">显示示例查询</span>
-        <div class="toggle-switch active" id="showExamples" onclick="toggleSwitch('showExamples')"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="config-section">
-    <div class="section-title">数据存储</div>
-    
-    <div class="form-group">
-      <label class="form-label">缓存策略</label>
-      <select class="form-input" id="cacheStrategy">
-        <option value="memory">内存缓存</option>
-        <option value="localStorage">本地存储</option>
-        <option value="none">不缓存</option>
-      </select>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">缓存过期时间 (小时)</label>
-        <input type="number" class="form-input" id="cacheExpiry" placeholder="24" value="24">
-      </div>
-      <div class="form-group">
-        <label class="form-label">最大缓存条目</label>
-        <input type="number" class="form-input" id="maxCacheSize" placeholder="100" value="100">
-      </div>
-    </div>
-
-    <div class="form-group">
-      <button class="test-btn" onclick="clearCache()">清除缓存</button>
-      <button class="test-btn" onclick="exportData()">导出数据</button>
-      <button class="test-btn" onclick="importData()">导入数据</button>
     </div>
   </div>
 
@@ -405,98 +283,105 @@ body {
       </div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Zotero 连接状态</label>
-      <div style="display: flex; align-items: center;">
-        <span class="status-badge status-disconnected" id="zoteroStatus">未连接</span>
-        <button class="test-btn" onclick="testZoteroConnection()">测试连接</button>
-      </div>
-    </div>
   </div>
 </div>
 
 <script>
-function toggleSwitch(id) {
-  const element = document.getElementById(id);
-  element.classList.toggle('active');
-}
-
-function saveConfig() {
+async function saveConfig() {
   const config = {
+    rag: {
+      zoteroPath: document.getElementById('ragZoteroPath').value,
+      apiKey: document.getElementById('ragApiKey').value,
+      baseUrl: document.getElementById('ragBaseUrl').value,
+      chatModel: document.getElementById('ragChatModel').value,
+      embeddingModel: document.getElementById('ragEmbeddingModel').value
+    },
     api: {
-      url: document.getElementById('apiUrl').value,
-      timeout: parseInt(document.getElementById('apiTimeout').value),
-      maxRetries: parseInt(document.getElementById('maxRetries').value),
-      apiKey: document.getElementById('apiKey').value
-    },
-    zotero: {
-      apiKey: document.getElementById('zoteroApiKey').value,
-      userId: document.getElementById('zoteroUserId').value,
-      libraryId: document.getElementById('libraryId').value,
-      syncInterval: parseInt(document.getElementById('syncInterval').value),
-      autoSync: document.getElementById('autoSync').classList.contains('active')
-    },
-    search: {
-      maxResults: parseInt(document.getElementById('maxResults').value),
-      relevanceThreshold: parseFloat(document.getElementById('relevanceThreshold').value),
-      defaultSort: document.getElementById('defaultSort').value,
-      showAbstract: document.getElementById('showAbstract').classList.contains('active'),
-      enableSuggestions: document.getElementById('enableSuggestions').classList.contains('active')
-    },
-    ui: {
-      language: document.getElementById('language').value,
-      theme: document.getElementById('theme').value,
-      showExamples: document.getElementById('showExamples').classList.contains('active')
-    },
-    storage: {
-      cacheStrategy: document.getElementById('cacheStrategy').value,
-      cacheExpiry: parseInt(document.getElementById('cacheExpiry').value),
-      maxCacheSize: parseInt(document.getElementById('maxCacheSize').value)
+      url: 'http://127.0.0.1:8000'
     }
   };
 
-  localStorage.setItem('zoteroRagConfig', JSON.stringify(config));
-  alert('配置已保存！');
+  const forLocal = JSON.parse(JSON.stringify(config));
+  forLocal.rag.apiKey = '';
+  localStorage.setItem('zoteroRagConfig', JSON.stringify(forLocal));
+
+  const apiUrl = 'http://127.0.0.1:8000';
+  try {
+    const response = await fetch(`${apiUrl}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zotero_path: config.rag.zoteroPath,
+        api_key: config.rag.apiKey,
+        base_url: config.rag.baseUrl || null,
+        chat_model: config.rag.chatModel,
+        embedding_model: config.rag.embeddingModel
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || '后端保存失败');
+    }
+    alert('配置已保存，并已同步到后端 config.yaml');
+    document.getElementById('ragApiKey').value = '';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('returnTo') === 'main') {
+      window.location.href = '/';
+    }
+  } catch (error) {
+    alert(`本地已保存，但后端写入失败：${error.message}`);
+  }
 }
 
 function loadConfig() {
   const savedConfig = localStorage.getItem('zoteroRagConfig');
   if (savedConfig) {
     const config = JSON.parse(savedConfig);
+    if (config.rag && 'apiKey' in config.rag) {
+      delete config.rag.apiKey;
+      localStorage.setItem('zoteroRagConfig', JSON.stringify(config));
+    }
+
+    document.getElementById('ragZoteroPath').value = config.rag?.zoteroPath || '';
+    document.getElementById('ragApiKey').value = '';
+    document.getElementById('ragBaseUrl').value = config.rag?.baseUrl || '';
+    document.getElementById('ragChatModel').value = config.rag?.chatModel || 'gpt-4o-mini';
+    document.getElementById('ragEmbeddingModel').value = config.rag?.embeddingModel || 'text-embedding-3-small';
     
-    document.getElementById('apiUrl').value = config.api?.url || 'http://localhost:8000';
-    document.getElementById('apiTimeout').value = config.api?.timeout || 30;
-    document.getElementById('maxRetries').value = config.api?.maxRetries || 3;
-    document.getElementById('apiKey').value = config.api?.apiKey || '';
-    
-    document.getElementById('zoteroApiKey').value = config.zotero?.apiKey || '';
-    document.getElementById('zoteroUserId').value = config.zotero?.userId || '';
-    document.getElementById('libraryId').value = config.zotero?.libraryId || '1';
-    document.getElementById('syncInterval').value = config.zotero?.syncInterval || 30;
-    updateSwitch('autoSync', config.zotero?.autoSync);
-    
-    document.getElementById('maxResults').value = config.search?.maxResults || 10;
-    document.getElementById('relevanceThreshold').value = config.search?.relevanceThreshold || 0.3;
-    document.getElementById('defaultSort').value = config.search?.defaultSort || 'relevance';
-    updateSwitch('showAbstract', config.search?.showAbstract);
-    updateSwitch('enableSuggestions', config.search?.enableSuggestions);
-    
-    document.getElementById('language').value = config.ui?.language || 'zh-CN';
-    document.getElementById('theme').value = config.ui?.theme || 'light';
-    updateSwitch('showExamples', config.ui?.showExamples);
-    
-    document.getElementById('cacheStrategy').value = config.storage?.cacheStrategy || 'memory';
-    document.getElementById('cacheExpiry').value = config.storage?.cacheExpiry || 24;
-    document.getElementById('maxCacheSize').value = config.storage?.maxCacheSize || 100;
   }
 }
 
-function updateSwitch(id, isActive) {
-  const element = document.getElementById(id);
-  if (isActive) {
-    element.classList.add('active');
-  } else {
-    element.classList.remove('active');
+async function loadServerConfig() {
+  const apiUrl = 'http://127.0.0.1:8000';
+  try {
+    const response = await fetch(`${apiUrl}/api/config`);
+    const data = await response.json();
+    if (!response.ok || !data.success) return;
+
+    document.getElementById('ragZoteroPath').value = data.zotero_path || '';
+    document.getElementById('ragBaseUrl').value = data.base_url || '';
+    document.getElementById('ragChatModel').value = data.chat_model || 'gpt-4o-mini';
+    document.getElementById('ragEmbeddingModel').value = data.embedding_model || 'text-embedding-3-small';
+
+    // 与服务器对齐后写回 localStorage，主页面与其它标签页能沿用同一份表单缓存
+    try {
+      const raw = localStorage.getItem('zoteroRagConfig');
+      const existing = raw ? JSON.parse(raw) : {};
+      const merged = {
+        rag: {
+          zoteroPath: document.getElementById('ragZoteroPath').value,
+          apiKey: '',
+          baseUrl: document.getElementById('ragBaseUrl').value,
+          chatModel: document.getElementById('ragChatModel').value,
+          embeddingModel: document.getElementById('ragEmbeddingModel').value,
+        },
+        api: { url: existing.api?.url || 'http://127.0.0.1:8000' },
+      };
+      localStorage.setItem('zoteroRagConfig', JSON.stringify(merged));
+    } catch (_) { /* ignore */ }
+  } catch (error) {
+    // 后端未启动时静默失败，避免影响页面使用
   }
 }
 
@@ -507,8 +392,12 @@ function resetConfig() {
   }
 }
 
+function goToMainPage() {
+  window.location.href = '/';
+}
+
 function testApiConnection() {
-  const apiUrl = document.getElementById('apiUrl').value;
+  const apiUrl = 'http://127.0.0.1:8000';
   const statusBadge = document.getElementById('apiStatus');
   
   statusBadge.textContent = '测试中...';
@@ -529,84 +418,8 @@ function testApiConnection() {
     });
 }
 
-function testZoteroConnection() {
-  const apiKey = document.getElementById('zoteroApiKey').value;
-  const userId = document.getElementById('zoteroUserId').value;
-  const statusBadge = document.getElementById('zoteroStatus');
-  
-  if (!apiKey || !userId) {
-    alert('请先填写 Zotero API 密钥和用户 ID');
-    return;
-  }
-  
-  statusBadge.textContent = '测试中...';
-  statusBadge.className = 'status-badge';
-  
-  fetch(`https://api.zotero.org/users/${userId}/items?key=${apiKey}&limit=1`)
-    .then(response => {
-      if (response.ok) {
-        statusBadge.textContent = '已连接';
-        statusBadge.className = 'status-badge status-connected';
-      } else {
-        throw new Error('连接失败');
-      }
-    })
-    .catch(error => {
-      statusBadge.textContent = '连接失败';
-      statusBadge.className = 'status-badge status-disconnected';
-    });
-}
-
-function clearCache() {
-  if (confirm('确定要清除所有缓存吗？')) {
-    localStorage.removeItem('zoteroRagCache');
-    alert('缓存已清除');
-  }
-}
-
-function exportData() {
-  const data = {
-    config: JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}'),
-    cache: JSON.parse(localStorage.getItem('zoteroRagCache') || '{}')
-  };
-  
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `zotero_rag_backup_${new Date().toISOString().split('T')[0]}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function importData() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = (e) => {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        if (data.config) {
-          localStorage.setItem('zoteroRagConfig', JSON.stringify(data.config));
-        }
-        if (data.cache) {
-          localStorage.setItem('zoteroRagCache', JSON.stringify(data.cache));
-        }
-        alert('数据导入成功！');
-        location.reload();
-      } catch (error) {
-        alert('导入失败：文件格式错误');
-      }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
 loadConfig();
+loadServerConfig();
 </script>
 </body>
 </html>

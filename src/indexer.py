@@ -84,11 +84,16 @@ def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
     print("☁️ 正在调用嵌入模型生成向量并构建 FAISS 索引...")
     embeddings = build_embeddings(config)
 
-    batch_size = 300
+    # 较小批次：tqdm 步进更勤、单次 HTTP 压力更小，第三方网关也不容易长时间无响应
+    batch_size = 64
     vectorstore = None
 
     for i in tqdm(range(0, len(splits), batch_size), desc="🚀 向量化进度"):
         batch = splits[i: i + batch_size]
+        print(
+            f"   … 嵌入批次 {i // batch_size + 1}，本批 {len(batch)} 条（等待 API 返回中，无反应时请检查网络与 base_url）",
+            flush=True,
+        )
         if vectorstore is None:
             vectorstore = FAISS.from_documents(batch, embeddings)
         else:

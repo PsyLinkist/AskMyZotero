@@ -90,6 +90,17 @@ body {
   transform: scale(0.98);
 }
 
+.notice-box {
+  background: var(--color-background-warning);
+  color: var(--color-text-warning);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  display: none;
+}
+
 .search-box {
   background: var(--color-background-primary);
   border: 0.5px solid var(--color-border-secondary);
@@ -245,6 +256,30 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.card-evidence {
+  padding-left: 32px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.evidence-item {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  padding: 10px 12px;
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  white-space: pre-wrap;
+}
+.evidence-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  margin-bottom: 6px;
+}
 .card-tags {
   display: flex;
   flex-wrap: wrap;
@@ -347,8 +382,10 @@ body {
       <div class="header-title">查询我的文献库</div>
       <div class="header-sub">用自然语言搜索你读过的文献</div>
     </div>
-    <button class="settings-btn" onclick="window.location.href='settings.html'">⚙️ 设置</button>
+    <button class="settings-btn" onclick="window.location.href='settings.html?returnTo=main'">⚙️ 设置</button>
   </div>
+
+  <div class="notice-box" id="configNotice"></div>
 
   <div class="search-box">
     <div class="search-row">
@@ -482,8 +519,11 @@ async function runSearch() {
   area.innerHTML = `<div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span style="color:var(--color-text-tertiary);font-size:13px;"> 正在检索文献库...</span></div>`;
 
   try {
+    const savedConfig = JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}');
+    const apiBaseUrl = (savedConfig.api?.url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+
     // 【关键】调用你本地 8000 端口的 FastAPI
-    const response = await fetch('http://127.0.0.1:8000/api/ask', {
+    const response = await fetch(`${apiBaseUrl}/api/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: query, top_k: 4 })
@@ -497,37 +537,115 @@ async function runSearch() {
       area.innerHTML = `<div class="empty">搜索失败：${data.error_message}</div>`;
     }
   } catch (error) {
-    area.innerHTML = `<div class="empty">无法连接到后端服务器，请确保 server.py 已启动</div>`;
+    area.innerHTML = `<div class="empty">无法连接到后端服务器，请检查设置页中的后端地址，并确保服务已启动</div>`;
   }
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // 新增一个渲染函数，把后端返回的 JSON 变成漂亮的卡片
 function renderResults(data) {
   const area = document.getElementById('resultsArea');
-  let html = `<div class="answer-box"><div class="answer-label">AI 回答</div><div class="answer-content">${data.answer}</div></div>`;
+  let html = `<div class="answer-box"><div class="answer-label">AI 回答</div><div class="answer-content">${escapeHtml(data.answer)}</div></div>`;
   
   if (data.references && data.references.length > 0) {
     html += `<div class="results-header"><div class="results-count">找到 <strong>${data.references.length}</strong> 篇相关文献</div></div>`;
     data.references.forEach((p, i) => {
+      const hits = Array.isArray(p.evidence_snippets) ? p.evidence_snippets : [];
+      let evidenceHtml = '';
+      if (hits.length > 0) {
+        evidenceHtml = '<div class="card-evidence">';
+        hits.forEach((h, j) => {
+          const pg = h.page != null ? `第 ${h.page} 页` : '页码未知';
+          evidenceHtml += `<div class="evidence-item"><div class="evidence-label">证据 ${j + 1} · ${escapeHtml(pg)}</div>${escapeHtml(h.content || '')}</div>`;
+        });
+        evidenceHtml += '</div>';
+      } else if (p.abstract) {
+        evidenceHtml = `<div class="card-abstract">${escapeHtml(p.abstract)}</div>`;
+      }
       html += `
         <div class="card">
           <div class="card-top">
             <span class="card-index">${String(i+1).padStart(2,'0')}</span>
-            <span class="card-title">${p.title}</span>
+            <span class="card-title">${escapeHtml(p.title)}</span>
           </div>
-          <div class="card-meta">
-            <span>${p.authors}</span><span class="meta-sep">·</span>
-            <span>${p.venue}</span><span class="meta-sep">·</span>
-            <span>${p.year || 'N/A'}</span>
-          </div>
-          <div class="card-abstract">${p.abstract}</div>
+          ${evidenceHtml}
         </div>`;
     });
   }
   area.innerHTML = html;
 }
 
+function mergeServerConfigToLocalStorage(data) {
+  try {
+    const raw = localStorage.getItem('zoteroRagConfig');
+    const existing = raw ? JSON.parse(raw) : {};
+    const merged = {
+      rag: {
+        zoteroPath: data.zotero_path || existing.rag?.zoteroPath || '',
+        apiKey: '',
+        baseUrl: data.base_url ?? existing.rag?.baseUrl ?? '',
+        chatModel: data.chat_model || existing.rag?.chatModel || 'gpt-4o-mini',
+        embeddingModel: data.embedding_model || existing.rag?.embeddingModel || 'text-embedding-3-small',
+      },
+      api: { url: existing.api?.url || 'http://127.0.0.1:8000' },
+    };
+    localStorage.setItem('zoteroRagConfig', JSON.stringify(merged));
+  } catch (_) { /* ignore */ }
+}
 
+async function checkConfigBeforeUse() {
+  const notice = document.getElementById('configNotice');
+  const apiBaseUrl = 'http://127.0.0.1:8000';
+
+  try {
+    const cfgRes = await fetch(`${apiBaseUrl}/api/config`);
+    const data = await cfgRes.json();
+
+    if (cfgRes.ok && data.success) {
+      mergeServerConfigToLocalStorage(data);
+    }
+
+    const missingConfig = !cfgRes.ok || !data.success || !data.zotero_path || !data.api_key_set;
+
+    if (missingConfig) {
+      notice.style.display = 'block';
+      notice.innerHTML = `首次使用请先完成配置（PDF 文件夹、API Key 等）。<a href="settings.html?returnTo=main">点击前往设置</a>`;
+      return;
+    }
+
+    let healthRes = await fetch(`${apiBaseUrl}/health`);
+    let health = await healthRes.json();
+
+    if (!health.ready) {
+      await fetch(`${apiBaseUrl}/api/init`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      healthRes = await fetch(`${apiBaseUrl}/health`);
+      health = await healthRes.json();
+    }
+
+    if (!health.ready) {
+      notice.style.display = 'block';
+      const err = health.init_error ? escapeHtml(health.init_error) : '引擎未能就绪';
+      notice.innerHTML = `后端引擎未就绪：${err} <a href="settings.html?returnTo=main">检查设置</a>`;
+      return;
+    }
+
+    notice.style.display = 'none';
+  } catch (error) {
+    notice.style.display = 'block';
+    notice.innerHTML = `后端未启动，无法查询文献。请先启动服务，再到设置页检查配置。`;
+  }
+}
+
+
+checkConfigBeforeUse();
 </script>
 </body>
 </html>

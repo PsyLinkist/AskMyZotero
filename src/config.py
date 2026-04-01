@@ -3,6 +3,7 @@
 # 其他模块只依赖 AppConfig，不再各自维护零散的路径、模型和 API 参数。
 
 import os
+import sys
 import getpass
 import argparse
 from dataclasses import dataclass
@@ -105,7 +106,8 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
     """
     # 1. 优先尝试读取 config.yaml
     yaml_config = {}
-    config_file = Path("config.yaml")
+    config_file_env = os.getenv("ASKMYZOTERO_CONFIG")
+    config_file = Path(config_file_env).expanduser().resolve() if config_file_env else Path("config.yaml")
     if config_file.exists():
         try:
             with open(config_file, "r", encoding="utf-8") as f:
@@ -128,8 +130,16 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
 
     # 4. 路径对象转换与工作目录创建
     zotero_path_obj = Path(zotero_path).expanduser().resolve()
-    work_dir = Path(args.work_dir).expanduser().resolve()
-    index_root = work_dir / args.index_name
+    # 相对 work_dir：源码运行相对当前工作目录；打包 exe 相对可执行文件目录，避免 cwd 在 dist/ 时建出一套“空索引”又去调 embedding 卡住。
+    work_dir_raw = yaml_config.get("work_dir") or args.work_dir
+    work_dir_path = Path(str(work_dir_raw)).expanduser()
+    if not work_dir_path.is_absolute():
+        base = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path.cwd()
+        work_dir = (base / work_dir_path).resolve()
+    else:
+        work_dir = work_dir_path.resolve()
+    index_name = str(yaml_config.get("index_name") or args.index_name)
+    index_root = work_dir / index_name
     index_root.mkdir(parents=True, exist_ok=True)
 
     # 5. 按照 AppConfig 的结构准备所有 18 个字段
@@ -138,7 +148,7 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         # 路径类
         "zotero_path": zotero_path_obj,
         "work_dir": work_dir,
-        "index_name": args.index_name,
+        "index_name": index_name,
         "db_save_path": index_root / "faiss_index",
         "splits_cache_path": index_root / "zotero_splits_cache.pkl",
         "manifest_path": index_root / "manifest.json",

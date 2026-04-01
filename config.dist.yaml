@@ -1,0 +1,21 @@
+# 打包专用模板：build_exe.bat 仅将本文件复制为内置 config.yaml（无密钥、无个人路径）。
+# 解压/运行时仍名为 config.yaml，与 server.resource_path("config.yaml") 一致。
+# 首次运行 EXE 会将其复制到 %APPDATA%\AskMyZotero\config.yaml。
+# 本地开发请用根目录 config.yaml 或环境变量 ASKMYZOTERO_CONFIG。
+
+zotero_path: ""
+work_dir: ".askmyzotero"
+index_name: "default"
+
+api_key: ""
+base_url: null
+
+chat_model: "gpt-4o-mini"
+embedding_model: "text-embedding-3-small"
+
+chunk_size: 1000
+chunk_overlap: 150
+top_k: 5
+temperature: 0.2
+
+rebuild: false

@@ -3,6 +3,7 @@
 # 同时它也负责管理 splits 的本地缓存，从而避免每次启动都重新解析全部 PDF。
 
 import pickle
+from pathlib import Path
 
 from tqdm import tqdm
 from langchain_community.document_loaders import PyPDFLoader
@@ -74,6 +75,32 @@ def split_documents(docs, chunk_size: int, chunk_overlap: int):
     return splits
 
 
+def enrich_split_metadata(splits):
+    """
+    统一补齐检索与前端展示需要的 metadata，确保历史缓存/新切块格式一致。
+    """
+    for idx, split in enumerate(splits, start=1):
+        metadata = split.metadata or {}
+
+        source_path = str(metadata.get("source", "unknown"))
+        file_name = Path(source_path).name if source_path != "unknown" else "unknown"
+
+        page = metadata.get("page")
+        page_1based = page + 1 if isinstance(page, int) else None
+
+        metadata["source_path"] = source_path
+        metadata["source"] = source_path
+        metadata["file_name"] = metadata.get("file_name", file_name)
+        metadata["page"] = page if isinstance(page, int) else metadata.get("page")
+        metadata["page_1based"] = page_1based
+        metadata["chunk_id"] = metadata.get("chunk_id", f"{file_name}#chunk-{idx}")
+        metadata["chunk_rank"] = idx
+
+        split.metadata = metadata
+
+    return splits
+
+
 def load_or_create_splits(config: AppConfig):
     """
     优先从本地缓存中读取文本块；如果缓存不存在，则重新解析 PDF 并切块。
@@ -83,11 +110,13 @@ def load_or_create_splits(config: AppConfig):
         print(f"🟢 发现文本块缓存，直接读取: {config.splits_cache_path}")
         with open(config.splits_cache_path, "rb") as f:
             splits = pickle.load(f)
+        splits = enrich_split_metadata(splits)
         print(f"✅ 缓存读取成功，共 {len(splits)} 个文本块。")
         return splits
 
     docs = load_pdf_documents(config.zotero_path)
     splits = split_documents(docs, config.chunk_size, config.chunk_overlap)
+    splits = enrich_split_metadata(splits)
 
     print("💾 正在保存文本块缓存...")
     with open(config.splits_cache_path, "wb") as f:
