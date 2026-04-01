@@ -48,7 +48,7 @@
 
 ### 一键打包方式
 
-按 `build_exe.bat` 说明在已激活环境中执行清理旧包，重新打包，得到 `dist\AskMyZotero.exe`。
+按 build_exe.bat  说明在已激活环境中执行，会自动清理旧包，重新打包，得到 `dist\AskMyZotero.exe`。
 
 
 ## 2.0更新明细
