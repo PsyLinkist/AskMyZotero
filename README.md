@@ -15,12 +15,12 @@
 全新用户本机没有写入过的**运行时配置**和**文献索引工作目录**。要复现“第一次使用”，建议删掉下面 **两类位置**（按你当前是脚本还是 exe、以及是否改过路径为准）：
 
 1. **运行时配置文件**  
-   默认：`%APPDATA%\AskMyZotero\config.yaml`（若设置了 `ASKMYZOTERO_CONFIG`，则删你指向的那份）。  
+   默认：`%APPDATA%\AskMyZotero\config.yaml`（默认在这里 e.g  C:\Users\用户名\AppData\Roaming\AskMyZotero）（若设置了 `ASKMYZOTERO_CONFIG`，则删你指向的那份）。  
    也可删除整个 `%APPDATA%\AskMyZotero` 文件夹以彻底清空本轮用户配置。
 
 2. **索引与切块工作目录**（默认相对 `work_dir` + `index_name`，见 `config.yaml` / `config.dist.yaml`）  
-   - **脚本**：一般在项目根目录下 **`.askmyzotero\default\`**（内含 `faiss_index`、`zotero_splits_cache.pkl`、`manifest.json` 等）。  
-   - **exe**：一般在 **`AskMyZotero.exe` 同目录下** 的 `.askmyzotero\default\`（因 frozen 时相对路径相对 exe 目录）。  
+   - **脚本启动**：一般在项目根目录下 **`.askmyzotero\default\`**（内含 `faiss_index`、`zotero_splits_cache.pkl`、`manifest.json` 等）。  
+   - **exe启动**：一般在 **`AskMyZotero.exe` 同目录下** 的 `.askmyzotero\default\`（因 frozen 时相对路径相对 exe 目录）。  
    删除整个 **`default`** 子目录或整个 **`.askmyzotero`** 即可清空向量库与切块缓存。
 
 
