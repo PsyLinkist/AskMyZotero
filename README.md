@@ -1,6 +1,4 @@
-# AskMyZotero
-
-## 重构整个项目
+# 重构整个项目
 
 ## 启动与测试
 
@@ -49,7 +47,7 @@
 ## 2.0 更新明细
 
 ### 架构与后端
-- `server.py` 经 **`ZoteroAgent`** 对外；接口含 `GET/POST /api/config`、`/health`（含 `ready` / `init_error`）、`POST /api/init`；配置写入后可初始化或自动尝试初始化（与保存逻辑、首屏检测的配合详见 **「启动与测试」**）。
+- `server.py` 经 **`ZoteroAgent`** 对外交互；接口含 `GET/POST /api/config`、`/health`（含 `ready` / `init_error`）、`POST /api/init`；配置写入后可初始化或自动尝试初始化（与保存逻辑、首屏检测的配合详见 **「启动与测试」**）。
 
 ### Agent 与检索流程
 - 初始化：Manifest 快照 → 向量库 → LLM；请求可带 **`top_k`** 覆盖默认值；提示词倾向于有检索结果时先列相关论文再总结。
@@ -75,7 +73,7 @@
 4. **回答**：LLM 使用完整检索片段拼成的 `context` 生成答案。  
 5. **前端**：标题 + 每条 `evidence_snippets` 全文展示；书目信息待 Zotero。
 
-## 1.0 更新明细
+# 1.0 更新明细
 
 - 新增 **config.yaml 配置文件** 方便修改测试信息，比如 API 和 PDF 文件地址，同步修改了 `config.py` 中的 `resolve_config` 函数用于读取配置文件
 - 新增 **server.py** 脚本用于前后端交互，目前直接调用底层功能 `indexer.py` 中的函数进行测试
