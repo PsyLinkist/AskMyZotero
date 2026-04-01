@@ -7,6 +7,8 @@
 ### 启动
 运行dist\AskMyZotero.exe
 
+（在发布里面下载）
+
 
 ### 模拟新用户（需要清空“缓存”）
 
@@ -33,16 +35,14 @@
 
 
 ### 测试效果
+<img width="1574" height="1219" alt="20260402011048_146_1" src="https://github.com/user-attachments/assets/e8dee2ca-81a8-4c06-a397-1e83200d4112" />
 
-![alt text](20260402011048_146_1-1.png)
 
 
 ### 本地开发测试
 
 1. 激活你的 Python 环境后，在项目根目录执行：
-   ```text
    python server.py
-   ```
 2. 浏览器打开 **`http://127.0.0.1:8000/`**（主界面），设置页为 **`http://127.0.0.1:8000/settings.html`**。  
    与 exe 行为一致，推荐统一用上述地址；若从磁盘双击打开 `.html`，仅适合临时查看静态页，页面间跳转与接口可能不一致。
 
