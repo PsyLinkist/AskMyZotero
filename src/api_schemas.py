@@ -1,3 +1,5 @@
+"""本文件定义 Web API 使用的请求体和响应体数据模型。"""
+
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 

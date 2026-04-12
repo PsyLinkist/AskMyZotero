@@ -1,3 +1,5 @@
+"""本文件负责从本地 Zotero SQLite 数据库中读取附件元数据。"""
+
 from __future__ import annotations
 
 import re

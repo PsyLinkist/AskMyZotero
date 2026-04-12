@@ -1,3 +1,5 @@
+"""本文件负责准备启动阶段需要的基础数据，例如当前 PDF 清单快照。"""
+
 from src.scanner import scan_pdf_files, print_scan_summary
 from src.manifest import load_manifest, save_manifest, update_manifest_snapshot
 

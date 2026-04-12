@@ -1,3 +1,5 @@
+"""本文件负责提供 FastAPI 服务，以及前端页面、问答接口和配置接口。"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse

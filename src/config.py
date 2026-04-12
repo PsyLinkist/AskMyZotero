@@ -1,6 +1,4 @@
-# 说明：
-# 本文件负责统一管理命令行参数、环境变量读取和运行配置对象。
-# 其他模块只依赖 AppConfig，不再各自维护零散的路径、模型和 API 参数。
+﻿"""本文件负责解析配置来源，并生成统一的应用配置对象。"""
 
 import os
 import sys
@@ -11,12 +9,14 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
+
 @dataclass
 class AppConfig:
     """
     统一保存程序运行所需的全部配置。
     这样可以避免在多个模块中重复传递零散参数。
     """
+
     zotero_path: Path
     work_dir: Path
     index_name: str
@@ -52,32 +52,26 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # 基础配置
     parser.add_argument("--zotero-path", type=str, default=None, help="Zotero 本地 storage 路径")
     parser.add_argument("--api-key", type=str, default=None, help="OpenAI 风格 API Key")
     parser.add_argument("--base-url", type=str, default=None, help="OpenAI 风格 BASE_URL，例如 https://api.openai.com/v1")
     parser.add_argument("--chat-model", type=str, default="gpt-4o-mini", help="聊天模型名称")
     parser.add_argument("--embedding-model", type=str, default="text-embedding-3-small", help="嵌入模型名称")
 
-    # 索引与缓存
     parser.add_argument("--work-dir", type=str, default=".askmyzotero", help="工作目录")
     parser.add_argument("--index-name", type=str, default="default", help="索引名称，用于区分不同配置")
     parser.add_argument("--rebuild", action="store_true", help="强制删除旧索引与缓存并重建")
 
-    # 文本切分 / 检索参数
     parser.add_argument("--chunk-size", type=int, default=1000, help="文本块大小")
     parser.add_argument("--chunk-overlap", type=int, default=150, help="文本块重叠")
     parser.add_argument("--top-k", type=int, default=15, help="检索返回的文档片段数量")
 
-    # LLM 参数
     parser.add_argument("--temperature", type=float, default=0.2, help="生成温度")
     parser.add_argument("--max-completion-tokens", type=int, default=1200, help="最大生成 token 数")
 
-    # 交互 / 单次提问
     parser.add_argument("--question", type=str, default=None, help="单次提问；如果不传则进入交互模式")
     parser.add_argument("--interactive-config", action="store_true", help="启动时主动询问缺失配置")
 
-    # 网络选项
     parser.add_argument("--no-proxy", type=str, default=None, help="自定义 NO_PROXY，例如 aliyuncs.com,dashscope.aliyuncs.com")
 
     return parser.parse_args()
@@ -86,7 +80,7 @@ def parse_args() -> argparse.Namespace:
 def prompt_if_missing(value: Optional[str], prompt_text: str, secret: bool = False) -> str:
     """
     当配置项缺失时进行交互式输入。
-    对于 API_KEY 这类敏感信息，支持隐藏输入内容。
+    对于 API Key 这类敏感信息，支持隐藏输入内容。
     """
     if value is not None and str(value).strip() != "":
         return str(value).strip()
@@ -96,15 +90,10 @@ def prompt_if_missing(value: Optional[str], prompt_text: str, secret: bool = Fal
     return input(prompt_text).strip()
 
 
-#====================修改resolve_config函数
-# region 原来resolve_config函数
-
-# endregion
 def resolve_config(args: argparse.Namespace) -> AppConfig:
     """
     综合命令行、环境变量与 YAML 文件，生成最终的 AppConfig 对象。
     """
-    # 1. 优先尝试读取 config.yaml
     yaml_config = {}
     config_file_env = os.getenv("ASKMYZOTERO_CONFIG")
     config_file = Path(config_file_env).expanduser().resolve() if config_file_env else Path("config.yaml")
@@ -116,21 +105,18 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         except Exception as e:
             print(f"⚠️ 读取 config.yaml 出错: {e}")
 
-    # 2. 确定基础路径与 API Key (优先级: 命令行 > 环境变量 > YAML)
     zotero_path = args.zotero_path or os.getenv("ASKMYZOTERO_ZOTERO_PATH") or yaml_config.get("zotero_path")
     api_key = args.api_key or os.getenv("OPENAI_API_KEY") or yaml_config.get("api_key")
     base_url = args.base_url or os.getenv("OPENAI_BASE_URL") or yaml_config.get("base_url")
 
-    # 3. 交互式补充缺失的必填项 (防止程序直接崩溃)
     if not zotero_path:
         zotero_path = prompt_if_missing(None, "请输入 Zotero 本地 storage 路径: ")
-    
+
     if not api_key:
         api_key = prompt_if_missing(None, "请输入 API_KEY: ", secret=True)
 
-    # 4. 路径对象转换与工作目录创建
     zotero_path_obj = Path(zotero_path).expanduser().resolve()
-    # 相对 work_dir：源码运行相对当前工作目录；打包 exe 相对可执行文件目录，避免 cwd 在 dist/ 时建出一套“空索引”又去调 embedding 卡住。
+
     work_dir_raw = yaml_config.get("work_dir") or args.work_dir
     work_dir_path = Path(str(work_dir_raw)).expanduser()
     if not work_dir_path.is_absolute():
@@ -138,48 +124,33 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         work_dir = (base / work_dir_path).resolve()
     else:
         work_dir = work_dir_path.resolve()
+
     index_name = str(yaml_config.get("index_name") or args.index_name)
     index_root = work_dir / index_name
     index_root.mkdir(parents=True, exist_ok=True)
 
-    # 5. 按照 AppConfig 的结构准备所有 18 个字段
-    # 这样写的好处是：一目了然，且不容易漏掉字段
     config_dict = {
-        # 路径类
         "zotero_path": zotero_path_obj,
         "work_dir": work_dir,
         "index_name": index_name,
         "db_save_path": index_root / "faiss_index",
         "splits_cache_path": index_root / "zotero_splits_cache.pkl",
         "manifest_path": index_root / "manifest.json",
-
-        # API 类
         "api_key": api_key,
         "base_url": base_url,
-
-        # 模型类 (优先读 YAML)
         "chat_model": yaml_config.get("chat_model") or args.chat_model,
         "embedding_model": yaml_config.get("embedding_model") or args.embedding_model,
-
-        # 算法参数类 (优先读 YAML)
         "chunk_size": yaml_config.get("chunk_size") or args.chunk_size,
         "chunk_overlap": yaml_config.get("chunk_overlap") or args.chunk_overlap,
         "top_k": yaml_config.get("top_k") or args.top_k,
-
-        # LLM 参数 (优先读 YAML)
         "temperature": yaml_config.get("temperature") or args.temperature,
         "max_completion_tokens": yaml_config.get("max_completion_tokens") or args.max_completion_tokens,
-
-        # 运行状态类
         "rebuild": args.rebuild if args.rebuild else yaml_config.get("rebuild", False),
         "question": args.question,
-        "no_proxy": args.no_proxy or os.getenv("NO_PROXY")
+        "no_proxy": args.no_proxy or os.getenv("NO_PROXY"),
     }
 
-    # 6. 使用 ** 技巧，把字典里的所有内容“解包”给 AppConfig
-    # 这等同于 return AppConfig(zotero_path=..., api_key=..., ...)
     return AppConfig(**config_dict)
-
 
 
 def print_config_summary(config: AppConfig) -> None:

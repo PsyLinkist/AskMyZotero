@@ -1,6 +1,4 @@
-# 说明：
-# 本文件是程序的主入口，负责串联配置解析、文献扫描快照保存、向量库加载和命令行问答。
-# 当前版本保持与原始单文件脚本相近的运行方式，但内部逻辑已经拆分到独立模块中。
+﻿"""本文件是命令行入口，负责串联配置加载、索引准备和问答流程。"""
 
 from src.config import parse_args, resolve_config, print_config_summary
 from src.indexer import get_vectorstore, create_chat_chain, answer_once, interactive_chat

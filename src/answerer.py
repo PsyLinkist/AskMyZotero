@@ -1,3 +1,5 @@
+"""本文件负责把聚合后的论文结果整理成最终回答内容和返回结构。"""
+
 from __future__ import annotations
 
 from typing import Any

@@ -1,3 +1,5 @@
+"""本文件负责将检索到的文本片段聚合成论文级结果，并进行简单打分。"""
+
 from __future__ import annotations
 
 from typing import Any

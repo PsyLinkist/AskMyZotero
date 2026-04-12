@@ -1,6 +1,4 @@
-# 说明：
-# 本文件负责把本地 PDF 解析成 LangChain 文档，并进一步切分为文本块。
-# 同时它也负责管理 splits 的本地缓存，从而避免每次启动都重新解析全部 PDF。
+﻿"""本文件负责加载 PDF、补充元数据、切分文本，并管理切块缓存。"""
 
 import pickle
 import re
@@ -52,10 +50,7 @@ def build_chunk_id(paper_id: str, page_start: int | None, page_end: int | None, 
 
 
 def load_pdf_documents_from_files(pdf_files: list[PdfFileInfo], attachment_metadata: dict[str, dict] | None = None):
-    """
-    按文件列表逐个读取 PDF 内容，并合并成统一的 LangChain 文档列表。
-    这里会尽量保留每个 PDF 的来源元信息，便于后续检索展示和增量更新。
-    """
+    """按文件列表逐个读取 PDF 内容，并合并为统一文档列表。"""
     docs = []
 
     for item in tqdm(pdf_files, desc="📄 解析 PDF 进度"):
@@ -90,10 +85,7 @@ def load_pdf_documents_from_files(pdf_files: list[PdfFileInfo], attachment_metad
 
 
 def load_pdf_documents(zotero_path, attachment_metadata: dict[str, dict] | None = None):
-    """
-    递归扫描 Zotero 目录，并读取所有 PDF 的内容。
-    这个函数是“目录路径 -> 文档列表”的总入口，供切块和建索引阶段复用。
-    """
+    """递归扫描 Zotero 目录，并读取所有 PDF 内容。"""
     print(f"🟡 正在扫描目录: {zotero_path}")
     print("⏳ 正在读取 PDF 文件，请稍候...")
 
@@ -105,10 +97,7 @@ def load_pdf_documents(zotero_path, attachment_metadata: dict[str, dict] | None 
 
 
 def split_documents(docs, chunk_size: int, chunk_overlap: int):
-    """
-    将长文档切分为适合嵌入和检索的文本块。
-    这样既能降低单次嵌入压力，也能提高检索粒度。
-    """
+    """将长文档切分为适合嵌入和检索的文本块。"""
     print("✂️ 正在切割文献文本...")
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -124,9 +113,7 @@ def split_documents(docs, chunk_size: int, chunk_overlap: int):
 
 
 def enrich_split_metadata(splits, attachment_metadata: dict[str, dict] | None = None):
-    """
-    统一补齐检索与前端展示需要的 metadata，确保历史缓存/新切块格式一致。
-    """
+    """统一补齐检索与前端展示需要的 metadata。"""
     for idx, split in enumerate(splits, start=1):
         metadata = split.metadata or {}
 
@@ -173,10 +160,7 @@ def enrich_split_metadata(splits, attachment_metadata: dict[str, dict] | None = 
 
 
 def load_or_create_splits(config: AppConfig):
-    """
-    优先从本地缓存中读取文本块；如果缓存不存在，则重新解析 PDF 并切块。
-    这一步能显著减少重复启动时的 PDF 解析耗时。
-    """
+    """优先从缓存读取文本块，不存在时重新解析并切块。"""
     attachment_metadata = load_attachment_metadata(config.zotero_path)
 
     if config.splits_cache_path.exists():

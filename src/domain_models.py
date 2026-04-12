@@ -1,3 +1,5 @@
+"""本文件定义检索、聚合和回答生成过程中使用的内部数据模型。"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field

@@ -1,3 +1,5 @@
+"""本文件实现当前生效的论文问答 Agent，供 Web 服务调用。"""
+
 from pathlib import Path
 from typing import Any, Dict
 

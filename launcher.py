@@ -1,3 +1,5 @@
+"""本文件负责启动本地 Web 服务，并自动打开浏览器中的主界面。"""
+
 import threading
 import webbrowser
 

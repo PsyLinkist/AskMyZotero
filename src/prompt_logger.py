@@ -1,3 +1,5 @@
+"""本文件负责保存提示词、检索结果和回答内容，便于后续排查问题。"""
+
 from __future__ import annotations
 
 import json
