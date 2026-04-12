@@ -17,7 +17,7 @@ from src.schemas import (
     RagConfigResponse,
 )
 from src.config import parse_args, resolve_config
-from src.agent import ZoteroAgent
+from src.paper_agent_v2 import ZoteroAgent
 
 
 def resource_path(name: str) -> Path:
@@ -175,17 +175,20 @@ async def ask_endpoint(request: QueryRequest):
             references = [
                 ReferenceSnippet(
                     title=p.get("title", "unknown"),
-                    abstract=p.get("abstract", ""),
+                    authors=", ".join(p.get("authors") or []) if isinstance(p.get("authors"), list) else (p.get("authors") or "Unknown"),
+                    venue=p.get("venue") or "N/A",
+                    year=p.get("year"),
+                    abstract="；".join(p.get("match_reason", [])),
                     source_path=p.get("source_path", p.get("title", "unknown")),
-                    page=p.get("page"),
+                    page=(p.get("evidences", [{}])[0].get("page") if p.get("evidences") else p.get("page")),
                     score=p.get("score", 0.0),
                     evidence_snippets=[
                         EvidenceHit(
                             page=h.get("page"),
-                            content=h.get("content", ""),
+                            content=h.get("text", h.get("content", "")),
                             rank=h.get("rank"),
                         )
-                        for h in p.get("evidence_snippets", [])
+                        for h in p.get("evidences", p.get("evidence_snippets", []))
                     ],
                 )
                 for p in paper_items
@@ -213,7 +216,12 @@ async def ask_endpoint(request: QueryRequest):
             answer=result["answer"],
             intent=result.get("intent", "paper_search"),
             references=references,
-            meta_data={"top_k_used": result.get("top_k_used")},
+            meta_data={
+                "top_k_used": result.get("top_k_used"),
+                "status": result.get("status"),
+                "confidence": result.get("confidence"),
+                "debug": result.get("debug", {}),
+            },
         )
     except Exception as e:
         return QueryResponse(success=False, error_message=str(e), answer="")
