@@ -7,7 +7,7 @@ from src.bootstrap import prepare_manifest_snapshot
 from src.config import AppConfig
 from src.indexer import get_vectorstore
 from src.prompt_logger import save_prompt_log
-from src.schema import QueryBundle
+from src.domain_models import QueryBundle
 
 
 class ZoteroAgent:

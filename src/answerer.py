@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.schema import AnswerPayload, PaperCandidate
+from src.domain_models import AnswerPayload, PaperCandidate
 
 
 def _get_bundle_value(query_bundle: Any, key: str, default: Any) -> Any:

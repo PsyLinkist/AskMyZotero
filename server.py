@@ -8,7 +8,7 @@ import os
 import sys
 import shutil
 
-from src.schemas import (
+from src.api_schemas import (
     QueryRequest,
     QueryResponse,
     ReferenceSnippet,

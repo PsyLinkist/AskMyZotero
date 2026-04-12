@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.schema import EvidenceRecord, PaperCandidate
+from src.domain_models import EvidenceRecord, PaperCandidate
 
 
 SECTION_WEIGHT = {
