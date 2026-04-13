@@ -601,6 +601,50 @@ function mergeServerConfigToLocalStorage(data) {
   } catch (_) { /* ignore */ }
 }
 
+function renderResults(data) {
+  const area = document.getElementById('resultsArea');
+  const answerLabel = data.answer_type === 'direct_answer' ? 'AI 答案' : '检索结果';
+  let html = `<div class="answer-box"><div class="answer-label">${escapeHtml(answerLabel)}</div><div class="answer-content">${escapeHtml(data.answer || '')}</div></div>`;
+
+  if (Array.isArray(data.evidence_summary) && data.evidence_summary.length) {
+    html += `<div class="card" style="cursor:default"><div class="card-title" style="margin-bottom:10px;">证据摘要</div><div class="card-evidence" style="padding-left:0">`;
+    data.evidence_summary.forEach((item, idx) => {
+      html += `<div class="evidence-item"><div class="evidence-label">摘要 ${idx + 1}</div>${escapeHtml(item)}</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  if (Array.isArray(data.references) && data.references.length) {
+    html += `<div class="results-header"><div class="results-count">引用与相关文献 <strong>${data.references.length}</strong></div></div>`;
+    data.references.forEach((ref, idx) => {
+      const snippets = Array.isArray(ref.evidence_snippets) ? ref.evidence_snippets : [];
+      html += `<div class="card">
+        <div class="card-top">
+          <div class="card-index">${String(idx + 1).padStart(2, '0')}</div>
+          <div class="card-title">${escapeHtml(ref.title || '未知文献')}</div>
+        </div>
+        <div class="card-meta">
+          ${ref.page ? `<span>第 ${ref.page} 页</span>` : ''}
+          ${ref.year ? `<span>${escapeHtml(String(ref.year))}</span>` : ''}
+          ${ref.venue ? `<span>${escapeHtml(ref.venue)}</span>` : ''}
+        </div>`;
+      if (ref.abstract) {
+        html += `<div class="card-abstract">${escapeHtml(ref.abstract)}</div>`;
+      }
+      if (snippets.length) {
+        html += `<div class="card-evidence">`;
+        snippets.forEach((snippet, sidx) => {
+          html += `<div class="evidence-item"><div class="evidence-label">证据 ${sidx + 1}${snippet.page ? ` · 第 ${snippet.page} 页` : ''}</div>${escapeHtml(snippet.content || '')}</div>`;
+        });
+        html += `</div>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  area.innerHTML = html;
+}
+
 async function checkConfigBeforeUse() {
   const notice = document.getElementById('configNotice');
   const apiBaseUrl = 'http://127.0.0.1:8000';

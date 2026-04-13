@@ -2,7 +2,7 @@
 
 from src.config import parse_args, resolve_config, print_config_summary
 from src.indexer import get_vectorstore, create_chat_chain, answer_once, interactive_chat
-from src.bootstrap import prepare_manifest_snapshot
+from src.manifest import prepare_manifest_snapshot
 
 
 def main() -> None:

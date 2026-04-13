@@ -10,7 +10,7 @@ import os
 import sys
 import shutil
 
-from src.api_schemas import (
+from src.api_models import (
     QueryRequest,
     QueryResponse,
     ReferenceSnippet,
@@ -19,7 +19,7 @@ from src.api_schemas import (
     RagConfigResponse,
 )
 from src.config import parse_args, resolve_config
-from src.paper_agent_v2 import ZoteroAgent
+from src.qa_agent import ZoteroAgent
 
 
 def resource_path(name: str) -> Path:
@@ -187,7 +187,7 @@ async def ask_endpoint(request: QueryRequest):
                     evidence_snippets=[
                         EvidenceHit(
                             page=h.get("page"),
-                            content=h.get("text", h.get("content", "")),
+                            content=h.get("raw_text", h.get("text", h.get("content", ""))),
                             rank=h.get("rank"),
                         )
                         for h in p.get("evidences", p.get("evidence_snippets", []))
@@ -205,7 +205,7 @@ async def ask_endpoint(request: QueryRequest):
                     evidence_snippets=[
                         EvidenceHit(
                             page=s.get("page"),
-                            content=s.get("content", ""),
+                            content=s.get("raw_text", s.get("text", s.get("content", ""))),
                             rank=s.get("rank"),
                         )
                     ],
@@ -216,7 +216,9 @@ async def ask_endpoint(request: QueryRequest):
         return QueryResponse(
             success=True,
             answer=result["answer"],
-            intent=result.get("intent", "paper_search"),
+            intent=result.get("intent", "paper_lookup"),
+            answer_type=result.get("answer_type", "paper_list"),
+            evidence_summary=result.get("evidence_summary", []),
             references=references,
             meta_data={
                 "top_k_used": result.get("top_k_used"),
