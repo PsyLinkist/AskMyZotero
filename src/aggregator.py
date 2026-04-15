@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.domain_models import AnswerPayload, EvidenceRecord, PaperCandidate
@@ -51,6 +52,30 @@ def _normalize_query_terms(query_bundle: Any) -> list[str]:
 def _normalize_text(value: Any, max_len: int = 300) -> str:
     text = " ".join(str(value or "").lower().split())
     return text[:max_len]
+
+
+def _split_into_sentences(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return []
+    parts = re.split(r"(?<=[.!?;。！？；])\s+", normalized)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _build_evidence_snippet(text: str, query_terms: list[str], max_chars: int = 280) -> str:
+    sentences = _split_into_sentences(text)
+    if not sentences:
+        return ""
+
+    matched = [
+        sentence for sentence in sentences
+        if any(term in sentence.lower() for term in query_terms)
+    ]
+    chosen = matched[:2] if matched else sentences[:2]
+    snippet = " ".join(chosen).strip()
+    if len(snippet) > max_chars:
+        return snippet[: max_chars - 3].rstrip() + "..."
+    return snippet
 
 
 def _build_paper_key(chunk: dict[str, Any], fallback_rank: int) -> str:
@@ -116,7 +141,7 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
             }
 
         paper = grouped[paper_key]
-        base_score = float(chunk.get("score", 1.0 / (rank + 1)))
+        base_score = float(chunk.get("score", 0.0))
         weighted_score = base_score * section_weights.get(chunk_type, 1.0)
         paper["score"] += weighted_score
 
@@ -143,14 +168,14 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
                     chunk_id=str(chunk.get("chunk_id") or f"{paper_id}#chunk-{rank}"),
                     section=section,
                     page=evidence_page,
-                    text=text.strip(),
+                    text=_build_evidence_snippet(text, query_terms),
                     score=weighted_score,
                 )
             )
 
     papers: list[PaperCandidate] = []
     for paper in grouped.values():
-        evidences = sorted(paper["evidences"], key=lambda item: item.score, reverse=True)[:3]
+        evidences = sorted(paper["evidences"], key=lambda item: item.score, reverse=True)[:2]
         match_reason = list(sorted(paper["match_reason"])) or ["检索到多条相关正文证据"]
         papers.append(
             PaperCandidate(

@@ -17,6 +17,40 @@ from src.indexer import build_llm, get_vectorstore
 from src.manifest import prepare_manifest_snapshot
 from src.prompt_logger import save_prompt_log
 
+
+def _serialize_messages(messages: list[Any]) -> list[dict[str, str]]:
+    serialized: list[dict[str, str]] = []
+    for message in messages:
+        serialized.append(
+            {
+                "type": getattr(message, "type", message.__class__.__name__),
+                "content": str(getattr(message, "content", "")),
+            }
+        )
+    return serialized
+
+
+def _to_relevance_score(raw_score: Any) -> float:
+    """
+    Normalize vectorstore scores to a "higher is better" relevance score.
+    FAISS commonly returns distances, so we convert them into a bounded value.
+    """
+    try:
+        numeric_score = float(raw_score)
+    except (TypeError, ValueError):
+        return 0.0
+    if numeric_score < 0:
+        return numeric_score
+    return 1.0 / (1.0 + numeric_score)
+
+
+def _uses_paper_list_answer(intent: str) -> bool:
+    return intent in {"paper_lookup", "survey"}
+
+
+VALID_INTENTS = {"fact_qa", "comparison", "definition", "survey", "paper_lookup"}
+
+
 INTENT_PATTERNS = [
     ("comparison", ("区别", "差异", "对比", "compare", "versus", "vs")),
     ("definition", ("什么是", "是什么", "定义", "meaning of", "what is")),
@@ -36,23 +70,15 @@ class ZoteroAgent:
         self.vectorstore = get_vectorstore(self.config)
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.config.top_k})
         self.llm = build_llm(self.config)
+        self._last_llm_debug: dict[str, Any] = {}
 
     def parse_query(self, query: str) -> QueryBundle:
         clean_query = " ".join(query.split())
-        lowered = clean_query.lower()
         entities = self._extract_entities(clean_query)
         keywords = self._extract_keywords(clean_query)
+        self._last_llm_debug = {"query": clean_query}
 
-        intent = "fact_qa"
-        confidence = 0.55
-        for candidate, patterns in INTENT_PATTERNS:
-            if any(pattern.lower() in lowered for pattern in patterns):
-                intent = candidate
-                confidence = 0.85
-                break
-        if clean_query.startswith(FACT_PREFIXES) or any(hint in lowered for hint in FACT_HINTS):
-            intent = "fact_qa"
-            confidence = max(confidence, 0.8)
+        intent, confidence = self._classify_intent(clean_query)
 
         rewritten_queries = self._build_rewritten_queries(clean_query)
         return QueryBundle(
@@ -68,10 +94,93 @@ class ZoteroAgent:
                 "retrieve_mode": "paper_lookup" if intent == "paper_lookup" else "knowledge_qa",
             },
             answer_plan={
-                "style": "paper_list" if intent == "paper_lookup" else "direct_answer",
+                "style": "paper_list" if _uses_paper_list_answer(intent) else "direct_answer",
                 "cite_evidence": True,
             },
         )
+
+    def _classify_intent(self, query: str) -> tuple[str, float]:
+        llm_intent, llm_confidence = self._classify_intent_with_llm(query)
+        if llm_intent in VALID_INTENTS:
+            self._last_llm_debug["intent_resolution"] = {
+                "source": "llm",
+                "intent": llm_intent,
+                "confidence": llm_confidence,
+            }
+            return llm_intent, llm_confidence
+        rule_intent, rule_confidence = self._classify_intent_with_rules(query)
+        self._last_llm_debug["intent_resolution"] = {
+            "source": "rules_fallback",
+            "intent": rule_intent,
+            "confidence": rule_confidence,
+        }
+        return rule_intent, rule_confidence
+
+    def _classify_intent_with_llm(self, query: str) -> tuple[str | None, float]:
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You classify user queries for a personal academic literature assistant. "
+                    "Choose exactly one intent from: fact_qa, comparison, definition, survey, paper_lookup. "
+                    "Academic papers follow structured sections such as title, abstract, introduction, method, experiment/results, conclusion, and references. "
+                    "When a query asks which papers/articles use, adopt, propose, contain, or mention a method/topic in a paper section such as method, approach, experiment, or abstract, classify it as paper_lookup. "
+                    "Use paper_lookup for queries asking which papers/articles/works use, discuss, propose, compare, contain, or mention a method/topic. "
+                    "Use survey for broad overview or review requests. "
+                    "Return strict JSON only in the format "
+                    '{{"intent":"paper_lookup","confidence":0.92}}.',
+                ),
+                (
+                    "human",
+                    "Query: {query}\nReturn JSON only.",
+                ),
+            ]
+        )
+        messages = prompt.format_messages(query=query)
+        self._last_llm_debug["intent_classification"] = {
+            "prompt_messages": _serialize_messages(messages),
+        }
+        chain = prompt | self.llm | StrOutputParser()
+        try:
+            raw = chain.invoke({"query": query}).strip()
+            self._last_llm_debug["intent_classification"]["raw_response"] = raw
+            parsed = json.loads(raw)
+            intent = str(parsed.get("intent", "")).strip()
+            confidence = float(parsed.get("confidence", 0.0))
+            if intent in VALID_INTENTS:
+                self._last_llm_debug["intent_classification"]["parsed"] = {
+                    "intent": intent,
+                    "confidence": confidence,
+                    "valid": True,
+                }
+                return intent, max(0.0, min(confidence, 1.0))
+            self._last_llm_debug["intent_classification"]["parsed"] = {
+                "intent": intent,
+                "confidence": confidence,
+                "valid": False,
+            }
+        except Exception as exc:
+            self._last_llm_debug["intent_classification"]["error"] = str(exc)
+            return None, 0.0
+        return None, 0.0
+
+    def _classify_intent_with_rules(self, query: str) -> tuple[str, float]:
+        lowered = query.lower()
+        intent = "fact_qa"
+        confidence = 0.55
+        for candidate, patterns in INTENT_PATTERNS:
+            if any(pattern.lower() in lowered for pattern in patterns):
+                intent = candidate
+                confidence = 0.85
+                break
+        if query.startswith(FACT_PREFIXES) or any(hint in lowered for hint in FACT_HINTS):
+            intent = "fact_qa"
+            confidence = max(confidence, 0.8)
+        self._last_llm_debug["intent_rules"] = {
+            "intent": intent,
+            "confidence": confidence,
+        }
+        return intent, confidence
 
     def handle_query(self, query: str, top_k: int | None = None) -> Dict[str, Any]:
         try:
@@ -94,11 +203,14 @@ class ZoteroAgent:
                         "intent_confidence": query_bundle.intent_confidence,
                         "rewritten_queries": query_bundle.rewritten_queries,
                         "section_weights": resolve_section_weights(query_bundle.intent),
+                        "llm": self._last_llm_debug,
                     },
                 )
 
             references, chunks = self._format_docs(docs)
             response = self._dispatch_by_intent(query_bundle, chunks, references, effective_top_k)
+            response.setdefault("debug", {})
+            response["debug"]["llm"] = self._last_llm_debug
             response["top_k_used"] = effective_top_k
             response["prompt_log_path"] = str(
                 save_prompt_log(
@@ -123,8 +235,9 @@ class ZoteroAgent:
         references: list[dict[str, Any]],
         top_k: int,
     ) -> Dict[str, Any]:
-        if query_bundle.intent == "paper_lookup":
-            papers = aggregate_to_papers(query_bundle, chunks, top_papers=top_k)
+        if _uses_paper_list_answer(query_bundle.intent):
+            paper_limit = max(top_k, 8)
+            papers = aggregate_to_papers(query_bundle, chunks, top_papers=paper_limit)
             payload = generate_answer(query_bundle, papers)
             return self._build_response(
                 success=True,
@@ -146,20 +259,33 @@ class ZoteroAgent:
         return self._synthesize_direct_answer(query_bundle, chunks)
 
     def _retrieve_docs(self, query_bundle: QueryBundle, top_k: int) -> list[Any]:
-        retrieve_k = max(top_k, 6 if query_bundle.intent != "paper_lookup" else top_k)
+        if _uses_paper_list_answer(query_bundle.intent):
+            retrieve_k = max(top_k * 4, 12)
+        else:
+            retrieve_k = max(top_k, 6)
         seen_chunk_ids: set[str] = set()
         merged_docs: list[Any] = []
         for rewritten_query in query_bundle.rewritten_queries[:3]:
             docs = self.vectorstore.similarity_search_with_score(rewritten_query, k=retrieve_k)
+            scored_docs: list[tuple[Any, float]] = []
             for doc, score in docs:
                 metadata = dict(doc.metadata or {})
-                metadata["score"] = float(score)
+                metadata["raw_score"] = float(score)
+                metadata["score"] = _to_relevance_score(score)
                 doc.metadata = metadata
+                scored_docs.append((doc, float(metadata["score"])))
+            scored_docs.sort(key=lambda item: item[1], reverse=True)
+            for doc, _ in scored_docs:
+                metadata = dict(doc.metadata or {})
                 chunk_id = str(metadata.get("chunk_id") or f"{metadata.get('source')}::{metadata.get('page')}::{len(merged_docs)}")
                 if chunk_id in seen_chunk_ids:
                     continue
                 seen_chunk_ids.add(chunk_id)
                 merged_docs.append(doc)
+        merged_docs.sort(
+            key=lambda doc: float((doc.metadata or {}).get("score", 0.0)),
+            reverse=True,
+        )
         return merged_docs
 
     def _extract_entities(self, query: str) -> list[str]:
@@ -178,15 +304,13 @@ class ZoteroAgent:
         return [token for token in tokens if len(token) >= 2][:12]
 
     def _build_rewritten_queries(self, query: str) -> list[str]:
+        merged = [query]
         llm_rewrites = self._rewrite_query_with_llm(query)
-        if llm_rewrites:
-            merged = [query]
-            for item in llm_rewrites:
-                normalized = " ".join(str(item).split())
-                if normalized and normalized not in merged:
-                    merged.append(normalized)
-            return merged
-        return self._fallback_rewritten_queries(query)
+        for item in llm_rewrites:
+            normalized = " ".join(str(item).split())
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+        return merged
 
     def _rewrite_query_with_llm(self, query: str) -> list[str]:
         prompt = ChatPromptTemplate.from_messages(
@@ -194,40 +318,45 @@ class ZoteroAgent:
                 (
                     "system",
                     "You rewrite academic search queries for literature retrieval. "
+                    "Assume papers follow common academic structure: title, abstract, introduction, method, experiment/results, conclusion, references. "
+                    "When the user asks about papers that use a method/topic, rewrite the query so it targets method/approach usage in paper body sections rather than papers whose main topic is that method itself. "
+                    "Preserve section constraints such as method, abstract, experiment when they are present in the query. "
+                    "Prefer terminology that appears in academic prose, such as 'in the method section', 'uses', 'adopts', 'based on', 'applies'. "
                     "Return strict JSON only in the format "
-                    '{"rewritten_queries": ["...", "..."]}. '
+                    '{{"rewritten_queries": ["...", "..."]}}. '
                     "Keep at most 3 rewrites, preserve meaning, and expand abbreviations when helpful.",
                 ),
                 (
                     "human",
-                    'Query: {query}\nReturn JSON only, e.g. {"rewritten_queries": ["...", "..."]}',
+                    'Query: {query}\nReturn JSON only, e.g. {{"rewritten_queries": ["...", "..."]}}',
                 ),
             ]
         )
+        messages = prompt.format_messages(query=query)
+        self._last_llm_debug["query_rewrite"] = {
+            "prompt_messages": _serialize_messages(messages),
+        }
         chain = prompt | self.llm | StrOutputParser()
         try:
             raw = chain.invoke({"query": query}).strip()
+            self._last_llm_debug["query_rewrite"]["raw_response"] = raw
             parsed = json.loads(raw)
             rewrites = parsed.get("rewritten_queries", [])
             if isinstance(rewrites, list):
-                return [str(item) for item in rewrites if str(item).strip()][:3]
-        except Exception:
+                cleaned = [str(item) for item in rewrites if str(item).strip()][:3]
+                self._last_llm_debug["query_rewrite"]["parsed"] = {
+                    "rewritten_queries": cleaned,
+                    "valid": True,
+                }
+                return cleaned
+            self._last_llm_debug["query_rewrite"]["parsed"] = {
+                "rewritten_queries": [],
+                "valid": False,
+            }
+        except Exception as exc:
+            self._last_llm_debug["query_rewrite"]["error"] = str(exc)
             return []
         return []
-
-    def _fallback_rewritten_queries(self, query: str) -> list[str]:
-        alias_map = {
-            "ppr": "Personalized PageRank",
-            "hipporag": "HippoRAG",
-            "hipporag 2": "HippoRAG 2",
-            "graphrag": "GraphRAG",
-        }
-        rewrites = [query]
-        lowered = query.lower()
-        for key, value in alias_map.items():
-            if key in lowered and value not in rewrites:
-                rewrites.append(re.sub(key, value, query, flags=re.IGNORECASE))
-        return rewrites[:3]
 
     def _synthesize_direct_answer(self, query_bundle: QueryBundle, chunks: list[dict[str, Any]]) -> Dict[str, Any]:
         section_weights = resolve_section_weights(query_bundle.intent)
@@ -353,6 +482,7 @@ class ZoteroAgent:
                 "section": metadata.get("section"),
                 "chunk_type": metadata.get("chunk_type"),
                 "score": float(metadata.get("score", 0.0)),
+                "raw_score": metadata.get("raw_score"),
                 "content": raw_text,
                 "text": raw_text,
                 "raw_text": raw_text,
@@ -370,6 +500,7 @@ class ZoteroAgent:
                     "page": item["page"],
                     "content": raw_text,
                     "score": item["score"],
+                    "raw_score": item["raw_score"],
                 }
             )
         return references, chunks

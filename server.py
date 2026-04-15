@@ -198,7 +198,11 @@ async def ask_endpoint(request: QueryRequest):
         else:
             references = [
                 ReferenceSnippet(
-                    title=s["source"],
+                    title=(
+                        s.get("paper_title")
+                        or s.get("title")
+                        or Path(str(s.get("source_path", s["source"]))).name
+                    ),
                     abstract="",
                     source_path=s.get("source_path", s["source"]),
                     page=s.get("page"),
