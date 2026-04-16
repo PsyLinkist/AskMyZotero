@@ -2,19 +2,44 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from src.domain_models import EvidenceRecord, PaperCandidate
+from src.domain_models import AnswerPayload, EvidenceRecord, PaperCandidate
 
 
-SECTION_WEIGHT = {
-    "abstract": 1.35,
-    "introduction": 1.15,
-    "method": 1.3,
-    "experiment": 1.1,
-    "conclusion": 1.1,
-    "body": 1.0,
+BASE_SECTION_WEIGHTS = {
+    "abstract": 1.30,
+    "method": 1.40,
+    "experiment": 1.20,
+    "conclusion": 1.10,
+    "introduction": 0.95,
+    "body": 1.00,
+    "references": 0.35,
 }
+
+INTENT_SECTION_OVERRIDES = {
+    "fact_qa": {"method": 1.60, "abstract": 1.35, "experiment": 1.25},
+    "definition": {"abstract": 1.50, "introduction": 1.25, "method": 1.10},
+    "comparison": {"method": 1.50, "experiment": 1.40, "conclusion": 1.20},
+    "survey": {"abstract": 1.45, "conclusion": 1.25, "introduction": 1.15},
+    "paper_lookup": {"abstract": 1.35, "method": 1.35, "references": 0.50},
+}
+
+
+def _get_bundle_value(query_bundle: Any, key: str, default: Any = None) -> Any:
+    if hasattr(query_bundle, key):
+        return getattr(query_bundle, key)
+    if isinstance(query_bundle, dict):
+        return query_bundle.get(key, default)
+    return default
+
+
+def resolve_section_weights(intent: str | None) -> dict[str, float]:
+    weights = dict(BASE_SECTION_WEIGHTS)
+    if intent:
+        weights.update(INTENT_SECTION_OVERRIDES.get(str(intent), {}))
+    return weights
 
 
 def _normalize_query_terms(query_bundle: Any) -> list[str]:
@@ -27,6 +52,30 @@ def _normalize_query_terms(query_bundle: Any) -> list[str]:
 def _normalize_text(value: Any, max_len: int = 300) -> str:
     text = " ".join(str(value or "").lower().split())
     return text[:max_len]
+
+
+def _split_into_sentences(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return []
+    parts = re.split(r"(?<=[.!?;。！？；])\s+", normalized)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _build_evidence_snippet(text: str, query_terms: list[str], max_chars: int = 280) -> str:
+    sentences = _split_into_sentences(text)
+    if not sentences:
+        return ""
+
+    matched = [
+        sentence for sentence in sentences
+        if any(term in sentence.lower() for term in query_terms)
+    ]
+    chosen = matched[:2] if matched else sentences[:2]
+    snippet = " ".join(chosen).strip()
+    if len(snippet) > max_chars:
+        return snippet[: max_chars - 3].rstrip() + "..."
+    return snippet
 
 
 def _build_paper_key(chunk: dict[str, Any], fallback_rank: int) -> str:
@@ -60,6 +109,8 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
     grouped: dict[str, dict[str, Any]] = {}
     query_terms = _normalize_query_terms(query_bundle)
     seen_chunk_keys: set[str] = set()
+    intent = _get_bundle_value(query_bundle, "intent", "paper_lookup")
+    section_weights = resolve_section_weights(intent)
 
     for rank, chunk in enumerate(chunks, start=1):
         paper_key = _build_paper_key(chunk, rank)
@@ -90,8 +141,8 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
             }
 
         paper = grouped[paper_key]
-        base_score = float(chunk.get("score", 1.0 / (rank + 1)))
-        weighted_score = base_score * SECTION_WEIGHT.get(chunk_type, 1.0)
+        base_score = float(chunk.get("score", 0.0))
+        weighted_score = base_score * section_weights.get(chunk_type, 1.0)
         paper["score"] += weighted_score
 
         text_lower = text.lower()
@@ -117,14 +168,14 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
                     chunk_id=str(chunk.get("chunk_id") or f"{paper_id}#chunk-{rank}"),
                     section=section,
                     page=evidence_page,
-                    text=text.strip(),
+                    text=_build_evidence_snippet(text, query_terms),
                     score=weighted_score,
                 )
             )
 
     papers: list[PaperCandidate] = []
     for paper in grouped.values():
-        evidences = sorted(paper["evidences"], key=lambda item: item.score, reverse=True)[:3]
+        evidences = sorted(paper["evidences"], key=lambda item: item.score, reverse=True)[:2]
         match_reason = list(sorted(paper["match_reason"])) or ["检索到多条相关正文证据"]
         papers.append(
             PaperCandidate(
@@ -143,3 +194,57 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
 
     papers.sort(key=lambda item: item.score, reverse=True)
     return papers[:top_papers]
+
+
+def _format_paper_line(index: int, paper: PaperCandidate) -> str:
+    year_text = f" ({paper.year})" if paper.year else ""
+    venue_text = f", {paper.venue}" if paper.venue else ""
+    reasons = "；".join(paper.match_reason[:3]) if paper.match_reason else "检索到相关证据"
+    lines = [f"{index}. {paper.title}{year_text}{venue_text}", f"- 理由：{reasons}"]
+    if paper.evidences:
+        top_evidence = paper.evidences[0]
+        page_text = f"第 {top_evidence.page} 页，" if top_evidence.page else ""
+        snippet = top_evidence.text.strip().replace("\n", " ")
+        if len(snippet) > 240:
+            snippet = snippet[:237] + "..."
+        lines.append(f"- 证据：{page_text}{snippet}")
+    return "\n".join(lines)
+
+
+def generate_answer(query_bundle: Any, papers: list[PaperCandidate]) -> AnswerPayload:
+    intent = _get_bundle_value(query_bundle, "intent", "paper_lookup")
+    section_weights = resolve_section_weights(intent)
+    raw_query = _get_bundle_value(query_bundle, "raw_query", "")
+
+    if not papers:
+        return AnswerPayload(
+            answer_text="当前没有检索到足够相关的论文证据。",
+            papers=[],
+            confidence=0.0,
+            status="empty",
+            answer_type="paper_list",
+            evidence_summary=[],
+            debug={"intent": intent, "section_weights": section_weights},
+        )
+
+    lines = [f"问题：{raw_query}", "", "回答："]
+    for index, paper in enumerate(papers, start=1):
+        lines.append(_format_paper_line(index, paper))
+
+    evidence_summary: list[str] = []
+    for paper in papers[:3]:
+        if paper.evidences:
+            top_evidence = paper.evidences[0]
+            page_text = f"第 {top_evidence.page} 页" if top_evidence.page else "未标页码"
+            evidence_summary.append(f"{paper.title}：{page_text} 命中 {top_evidence.section or '正文'} 证据")
+
+    confidence = min(0.95, 0.5 + 0.08 * len(papers))
+    return AnswerPayload(
+        answer_text="\n\n".join(lines),
+        papers=papers,
+        confidence=confidence,
+        status="ok",
+        answer_type="paper_list",
+        evidence_summary=evidence_summary,
+        debug={"intent": intent, "section_weights": section_weights},
+    )

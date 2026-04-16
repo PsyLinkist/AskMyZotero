@@ -10,9 +10,13 @@ from typing import Any
 class QueryBundle:
     raw_query: str
     intent: str
+    intent_confidence: float = 0.0
+    entities: list[str] = field(default_factory=list)
+    keywords: list[str] = field(default_factory=list)
     rewritten_queries: list[str] = field(default_factory=list)
     filters: dict[str, Any] = field(default_factory=dict)
     search_plan: dict[str, Any] = field(default_factory=dict)
+    answer_plan: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -55,6 +59,8 @@ class AnswerPayload:
     papers: list[PaperCandidate]
     confidence: float
     status: str
+    answer_type: str = "paper_list"
+    evidence_summary: list[str] = field(default_factory=list)
     debug: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,5 +69,7 @@ class AnswerPayload:
             "papers": [paper.to_dict() for paper in self.papers],
             "confidence": self.confidence,
             "status": self.status,
+            "answer_type": self.answer_type,
+            "evidence_summary": self.evidence_summary,
             "debug": self.debug,
         }

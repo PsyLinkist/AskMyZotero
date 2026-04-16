@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.scanner import PdfFileInfo
+from src.scanner import PdfFileInfo, print_scan_summary, scan_pdf_files
 
 
 def create_empty_manifest() -> dict[str, Any]:
@@ -60,3 +60,13 @@ def update_manifest_snapshot(
     manifest["meta"]["file_count"] = len(pdf_files)
     manifest["files"] = build_file_records(pdf_files)
     return manifest
+
+
+def prepare_manifest_snapshot(config) -> None:
+    """扫描当前文献目录，并将结果写入 manifest.json。"""
+    pdf_files = scan_pdf_files(config.zotero_path)
+    print_scan_summary(pdf_files)
+    manifest = load_manifest(config.manifest_path)
+    manifest = update_manifest_snapshot(manifest, config.zotero_path, pdf_files)
+    save_manifest(config.manifest_path, manifest)
+    print(f"📘 Manifest 已更新: {config.manifest_path}")
