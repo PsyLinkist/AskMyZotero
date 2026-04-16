@@ -227,7 +227,7 @@ def generate_answer(query_bundle: Any, papers: list[PaperCandidate]) -> AnswerPa
             debug={"intent": intent, "section_weights": section_weights},
         )
 
-    lines = [f"问题：{raw_query}", "", "回答："]
+    lines = []
     for index, paper in enumerate(papers, start=1):
         lines.append(_format_paper_line(index, paper))
 

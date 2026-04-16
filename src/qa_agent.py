@@ -491,6 +491,7 @@ class ZoteroAgent:
                 "context_after": metadata.get("context_after", ""),
                 "chunk_local_index": metadata.get("chunk_local_index"),
                 "chunk_local_total": metadata.get("chunk_local_total"),
+                "attachment_key": metadata.get("attachment_key"),  # <--- 新增这一行
             }
             chunks.append(item)
             references.append(
@@ -501,6 +502,7 @@ class ZoteroAgent:
                     "content": raw_text,
                     "score": item["score"],
                     "raw_score": item["raw_score"],
+                    "attachment_key": metadata.get("attachment_key"), # <-- 新增这一行
                 }
             )
         return references, chunks

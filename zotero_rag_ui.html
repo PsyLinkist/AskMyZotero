@@ -4,543 +4,523 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>文献助手 · Zotero RAG</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --color-background-primary: #ffffff;
-  --color-background-secondary: #f5f5f3;
-  --color-background-tertiary: #eeede8;
-  --color-background-info: #e6f1fb;
-  --color-background-success: #eaf3de;
-  --color-background-warning: #faeeda;
-  --color-background-danger: #fcebeb;
-  --color-text-primary: #1a1a18;
-  --color-text-secondary: #5f5e5a;
-  --color-text-tertiary: #888780;
-  --color-text-info: #0c447c;
-  --color-text-success: #27500a;
-  --color-text-warning: #633806;
-  --color-text-danger: #791f1f;
-  --color-border-tertiary: rgba(0,0,0,0.12);
-  --color-border-secondary: rgba(0,0,0,0.22);
-  --color-border-primary: rgba(0,0,0,0.35);
-  --border-radius-md: 8px;
-  --border-radius-lg: 12px;
-  --border-radius-xl: 16px;
-  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-serif: 'Noto Serif SC', 'SimSun', serif;
-  --font-mono: 'SF Mono', 'Consolas', monospace;
+  --el-color-primary: #2563eb; 
+  --el-color-primary-hover: #1d4ed8;
+  --el-color-primary-light: #eff6ff;
+  --el-text-primary: #111827;
+  --el-text-regular: #374151;
+  --el-text-secondary: #6b7280;
+  --el-text-placeholder: #9ca3af;
+  --el-border-color: #e5e7eb;
+  --el-border-color-light: #f3f4f6;
+  --el-bg-color-page: #ffffff;
+  --el-bg-color-sidebar: #fafafa;
+  --font-family: 'Inter', 'Noto Sans SC', 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+}
 
 body {
-  font-family: var(--font-sans);
-  background: var(--color-background-tertiary);
-  color: var(--color-text-primary);
-  min-height: 100vh;
-  padding: 2rem 1rem;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  background-color: var(--el-bg-color-page);
+  color: var(--el-text-primary);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.page-wrap {
-  max-width: 860px;
-  margin: 0 auto;
-}
-
-.app { padding: 1.5rem 0; }
-
-.header { margin-bottom: 2rem; }
-.header-label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  margin-bottom: 6px;
+/* Header */
+.app-header {
+  height: 56px;
+  background-color: var(--el-bg-color-page);
+  border-bottom: 1px solid var(--el-border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  flex-shrink: 0;
+  z-index: 10;
 }
 .header-title {
-  font-size: 28px;
-  font-weight: 500;
-  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.header-sub {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  margin-top: 4px;
+.header-title-sub {
+  font-size: 12px;
+  color: var(--el-text-secondary);
+  font-weight: 400;
+  margin-top: 2px;
 }
-
-.settings-btn {
-  background: var(--color-background-secondary);
-  color: var(--color-text-primary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-md);
-  padding: 8px 16px;
-  font-size: 14px;
+.el-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: 32px;
+  white-space: nowrap;
   cursor: pointer;
-  font-family: var(--font-sans);
-  transition: opacity 0.15s;
+  background-color: transparent;
+  border: 1px solid var(--el-border-color);
+  color: var(--el-text-regular);
+  border-radius: 6px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  transition: all 0.2s;
 }
-
-.settings-btn:hover {
-  opacity: 0.75;
-}
-
-.settings-btn:active {
-  opacity: 0.55;
-  transform: scale(0.98);
+.el-button:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light);
 }
 
 .notice-box {
-  background: var(--color-background-warning);
-  color: var(--color-text-warning);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-md);
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  background-color: #fef0f0;
+  color: #f56c6c;
+  padding: 10px 24px;
   font-size: 13px;
+  text-align: center;
+  border-bottom: 1px solid #fde2e2;
   display: none;
 }
+.notice-box a { color: #f56c6c; font-weight: bold; text-decoration: underline; }
 
-.search-box {
-  background: var(--color-background-primary);
-  border: 0.5px solid var(--color-border-secondary);
-  border-radius: var(--border-radius-lg);
-  padding: 1rem 1.25rem;
-  margin-bottom: 1rem;
-}
-.search-row { display: flex; gap: 10px; align-items: flex-start; }
-.search-input {
+/* Main Layout */
+.app-main {
+  display: flex;
   flex: 1;
-  border: none;
-  outline: none;
-  font-family: var(--font-sans);
-  font-size: 15px;
-  color: var(--color-text-primary);
-  background: transparent;
-  resize: none;
-  min-height: 48px;
-  line-height: 1.6;
-}
-.search-input::placeholder { color: var(--color-text-tertiary); }
-.search-btn {
-  flex-shrink: 0;
-  background: var(--color-text-primary);
-  color: var(--color-background-primary);
-  border: none;
-  border-radius: var(--border-radius-md);
-  padding: 10px 18px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  transition: opacity 0.15s;
-  white-space: nowrap;
-}
-.search-btn:hover { opacity: 0.75; }
-.search-btn:active { opacity: 0.55; transform: scale(0.98); }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 0.5px solid var(--color-border-tertiary);
-}
-.chip {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  background: var(--color-background-secondary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: 20px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
-}
-.chip:hover {
-  background: var(--color-background-tertiary);
-  border-color: var(--color-border-secondary);
-}
-
-.results-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.results-count { font-size: 13px; color: var(--color-text-secondary); }
-.results-count strong { color: var(--color-text-primary); font-weight: 500; }
-.sort-select {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-md);
-  padding: 4px 8px;
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.card {
-  background: var(--color-background-primary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-lg);
-  padding: 1rem 1.25rem;
-  margin-bottom: 10px;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  cursor: pointer;
-}
-.card:hover {
-  border-color: var(--color-border-secondary);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-}
-.card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.card-index {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-  min-width: 20px;
-  padding-top: 2px;
-}
-.card-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  line-height: 1.4;
-  flex: 1;
-}
-.card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-  padding-left: 32px;
-}
-.meta-sep { color: var(--color-border-secondary); }
-
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-weight: 500;
-}
-.badge-conf {
-  background: var(--color-background-info);
-  color: var(--color-text-info);
-}
-.badge-journal {
-  background: var(--color-background-success);
-  color: var(--color-text-success);
-}
-.badge-preprint {
-  background: var(--color-background-warning);
-  color: var(--color-text-warning);
-}
-
-.card-abstract {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-  padding-left: 32px;
-  margin-bottom: 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.card-evidence {
-  padding-left: 32px;
-  margin-top: 10px;
+/* Chat Area */
+.chat-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  background-color: var(--el-bg-color-page);
+  position: relative;
 }
-.evidence-item {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  line-height: 1.65;
-  padding: 10px 12px;
-  background: var(--color-background-secondary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-md);
-  white-space: pre-wrap;
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 15%;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
-.evidence-label {
-  font-size: 11px;
+
+.message-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.message-row.user {
+  align-items: flex-end;
+}
+
+.message-row.ai {
+  align-items: flex-start;
+}
+
+.message {
+  max-width: 85%;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.message.user {
+  background-color: var(--el-color-primary);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 16px;
+  border-bottom-right-radius: 4px;
+  font-weight: 400;
+}
+
+.message.ai {
+  background-color: var(--el-bg-color-page);
+  border: 1px solid var(--el-border-color);
+  padding: 24px;
+  border-radius: 16px;
+  border-top-left-radius: 4px;
+  color: var(--el-text-primary);
+  width: 100%;
+}
+
+.message.ai p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+.message.ai p:last-child {
+  margin-bottom: 0;
+}
+
+.ref-tag {
+  color: var(--el-color-primary);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.ref-tag:hover {
+  text-decoration: underline;
+}
+
+/* Input Area */
+.input-area {
+  padding: 0 15% 40px 15%;
+  background-color: var(--el-bg-color-page);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.input-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+.input-box-container {
+  flex: 1;
+  background: var(--el-bg-color-page);
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  display: flex;
+}
+.input-box-container:focus-within {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light);
+}
+
+.input-box-container textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 22px;
+  max-height: 150px;
+  color: var(--el-text-primary);
+  background: transparent;
+  padding: 0;
+}
+.input-box-container textarea::placeholder {
+  color: var(--el-text-placeholder);
+}
+
+.send-btn {
+  background-color: var(--el-color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0 24px;
+  height: 44px;
+  font-size: 14px;
   font-weight: 500;
-  color: var(--color-text-tertiary);
-  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family);
+  flex-shrink: 0;
 }
-.card-tags {
+.send-btn:hover { background-color: var(--el-color-primary-hover); }
+.send-btn:disabled { background-color: var(--el-text-placeholder); cursor: not-allowed; }
+
+/* 快捷问答按钮 */
+.quick-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  padding-left: 32px;
-}
-.tag {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  background: var(--color-background-secondary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: 4px;
-  padding: 2px 7px;
+  gap: 8px;
 }
 
-.answer-box {
-  background: var(--color-background-secondary);
-  border: 0.5px solid var(--color-border-tertiary);
-  border-radius: var(--border-radius-lg);
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
-  font-size: 14px;
-  line-height: 1.7;
-  white-space: pre-wrap;
+.quick-btn {
+  background-color: var(--el-bg-color-sidebar);
+  border: 1px solid var(--el-border-color);
+  color: var(--el-text-regular);
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-family);
 }
-.answer-label {
-  font-size: 11px;
-  font-weight: 500;
+
+.quick-btn:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light);
+  background-color: var(--el-color-primary-light);
+}
+
+
+/* Right Sidebar (Sources) */
+.sidebar {
+  width: 380px;
+  background-color: var(--el-bg-color-sidebar);
+  border-left: 1px solid var(--el-border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 24px 24px 12px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-secondary);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--color-text-tertiary);
-  margin-bottom: 12px;
-  display: block;
+  flex-shrink: 0;
 }
-.answer-content {
-  color: var(--color-text-primary);
+.sources-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.answer-content ul {
-  margin-left: 20px;
-  margin-top: 8px;
-  margin-bottom: 8px;
+.source-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+  padding: 16px;
+  background-color: var(--el-bg-color-page);
+  display: flex;
+  flex-direction: column;
+  /* 强制换行：防止任何过长内容撑破卡片 */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
-.answer-content li {
+.source-card-index {
+  color: var(--el-color-primary);
+  font-weight: 600;
+  font-size: 14px;
   margin-bottom: 6px;
 }
-.answer-content strong {
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.empty {
-  text-align: center;
-  padding: 3rem 0;
-  color: var(--color-text-tertiary);
+.source-card-title {
   font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-primary);
+  margin-bottom: 6px;
+  line-height: 1.4;
 }
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 10px;
+.source-card-meta {
+  font-size: 13px;
+  color: var(--el-text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.4;
 }
-
-.loading-row {
+.source-tags {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.source-badge {
+  display: inline-flex;
   align-items: center;
-  padding: 2rem 0;
-}
-.loading-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-text-tertiary);
-  animation: pulse 1.2s infinite;
-}
-.loading-dot:nth-child(2) { animation-delay: 0.2s; }
-.loading-dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes pulse {
-  0%, 80%, 100% { opacity: 0.3; }
-  40% { opacity: 1; }
+  padding: 2px 8px;
+  background-color: var(--el-color-primary-light);
+  color: var(--el-color-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
-/* fade-in animation for results */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Evidence Summary */
+.source-summary {
+  font-size: 13px;
+  color: var(--el-text-regular);
+  margin-top: 12px;
+  line-height: 1.5;
+  border-top: 1px dashed var(--el-border-color);
+  padding-top: 12px;
 }
-.card { animation: fadeUp 0.25s ease both; }
-.card:nth-child(1) { animation-delay: 0.05s; }
-.card:nth-child(2) { animation-delay: 0.10s; }
-.card:nth-child(3) { animation-delay: 0.15s; }
-.card:nth-child(4) { animation-delay: 0.20s; }
+.source-summary-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-secondary);
+  margin-bottom: 6px;
+}
+.snippet-item {
+  margin-bottom: 8px;
+  /* 强制换行：专门针对摘要中过长的连贯英文字母 */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.snippet-item:last-child {
+  margin-bottom: 0;
+}
+
+.loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--el-color-primary);
+  margin: 0 2px;
+  animation: wave 1.3s linear infinite;
+}
+.loading-dot:nth-child(2) { animation-delay: -1.1s; }
+.loading-dot:nth-child(3) { animation-delay: -0.9s; }
+@keyframes wave {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+
+.ai-content strong { font-weight: 600; color: var(--el-text-primary); }
+.ai-content ul { margin: 10px 0; padding-left: 20px; }
+.ai-content li { margin-bottom: 6px; }
+
+.empty-sources {
+  color: var(--el-text-placeholder);
+  font-size: 13px;
+  text-align: left;
+  margin-top: 10px;
+}
+
+/* Zotero 打开按钮样式 */
+.zotero-link-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light);
+  border: 1px solid var(--el-color-primary);
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: fit-content;
+}
+.zotero-link-btn:hover {
+  background-color: var(--el-color-primary);
+  color: white;
+}
+
+/* Element Plus 风格 Tag 容器与样式 */
+.source-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.el-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 24px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 4px;
+  white-space: nowrap;
+  background-color: #ecf5ff; /* Element 主题淡蓝 */
+  border: 1px solid #d9ecff;
+  color: #409eff;
+}
+.el-tag--success {
+  background-color: #f0f9eb; /* Element 主题淡绿 */
+  border: 1px solid #e1f3d8;
+  color: #67c23a;
+}
+/* 期刊标签的橙色主题 */
+.el-tag--warning {
+  background-color: #fdf6ec; 
+  border: 1px solid #faecd8;
+  color: #e6a23c;
+}
+
+/* 专门用于文本超长截断的类 */
+.tag-truncate {
+  max-width: 130px; /* 你可以根据需要调大或调小这个宽度 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
 </style>
 </head>
 <body>
-<div class="page-wrap">
-<div class="app">
-  <div class="header" style="display: flex; justify-content: space-between; align-items: flex-start;">
-    <div>
-      <div class="header-label">文献助手 · Zotero RAG</div>
-      <div class="header-title">查询我的文献库</div>
-      <div class="header-sub">用自然语言搜索你读过的文献</div>
-    </div>
-    <button class="settings-btn" onclick="window.location.href='settings.html?returnTo=main'">⚙️ 设置</button>
+
+<div class="app-header">
+  <div>
+    <div class="header-title">文献助手 · Zotero RAG</div>
+    <div class="header-title-sub">基于大语言模型与本地文献库的智能问答</div>
   </div>
-
-  <div class="notice-box" id="configNotice"></div>
-
-  <div class="search-box">
-    <div class="search-row">
-      <textarea class="search-input" id="queryInput" placeholder="例如：哪些文章使用了检索增强方法？" rows="1"></textarea>
-      <button class="search-btn" onclick="runSearch()">搜索 ↗</button>
-    </div>
-    <div class="chips">
-      <span class="chip" onclick="fillQuery('哪些文章使用了检索方法？')">检索方法</span>
-      <span class="chip" onclick="fillQuery('我读过哪些关于RAG的文献？其中有哪些是顶会的？')">RAG 顶会</span>
-      <span class="chip" onclick="fillQuery('有没有用了投影技术的文献？')">投影技术</span>
-      <span class="chip" onclick="fillQuery('2023年以后的多模态相关文献')">多模态</span>
-      <span class="chip" onclick="fillQuery('有哪些文献研究了大语言模型的幻觉问题？')">幻觉问题</span>
-    </div>
-  </div>
-
-  <div id="resultsArea"></div>
+  <button class="el-button" onclick="window.location.href='settings.html?returnTo=main'">
+    <svg style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    设置
+  </button>
 </div>
+
+<div class="notice-box" id="configNotice"></div>
+
+<div class="app-main">
+  <div class="chat-container">
+    <div class="chat-history" id="chatArea">
+      <div class="message-row ai">
+        <div class="message ai">
+          <div class="ai-content">
+            <p>你好！我是你的 Zotero 文献助手。</p>
+            <p>你可以用自然语言搜索你读过的文献，或者直接向我提问，我会基于你的文献库为你提供解答，并在右侧展示相关的文献证据摘要。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="input-area">
+      <div class="input-main">
+        <div class="input-box-container">
+          <textarea id="queryInput" placeholder="Ask about your sources..." rows="1"></textarea>
+        </div>
+        <button class="send-btn" id="sendBtn" onclick="runSearch()">Send</button>
+      </div>
+      
+      <div class="quick-actions">
+        <button class="quick-btn" onclick="fillQuery('哪些文章使用了检索方法？')">检索方法</button>
+        <button class="quick-btn" onclick="fillQuery('我读过哪些关于RAG的文献？其中有哪些是顶会的？')">RAG顶会</button>
+        <button class="quick-btn" onclick="fillQuery('有没有用了投影技术的文献？')">投影技术</button>
+        <button class="quick-btn" onclick="fillQuery('2023年以后的多模态相关文献')">多模态</button>
+        <button class="quick-btn" onclick="fillQuery('有哪些文献研究了大语言模型的幻觉问题？')">幻觉问题</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-header">SOURCES</div>
+    <div class="sources-list" id="sourcesArea">
+      <div class="empty-sources">检索后将在此处显示引用文献与证据摘要</div>
+    </div>
+  </div>
 </div>
 
 <script>
-const mockDB = [
-  {
-    title: "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
-    authors: "Lewis P., Perez E., Piktus A. et al.",
-    venue: "NeurIPS 2020", type: "conf",
-    year: 2020,
-    abstract: "通过将参数化记忆与非参数化记忆相结合，提出了一种用于知识密集型任务的检索增强生成框架，显著提升了开放域问答等任务的表现。",
-    tags: ["RAG", "检索增强", "知识密集型任务", "语言模型"]
-  },
-  {
-    title: "Dense Passage Retrieval for Open-Domain Question Answering",
-    authors: "Karpukhin V., Oğuz B., Min S. et al.",
-    venue: "EMNLP 2020", type: "conf",
-    year: 2020,
-    abstract: "提出 DPR 方法，使用双编码器架构学习密集向量表示，用于开放域问答中的段落检索，在多个基准上超越传统稀疏检索方法。",
-    tags: ["密集检索", "DPR", "问答", "双编码器"]
-  },
-  {
-    title: "REALM: Retrieval-Augmented Language Model Pre-Training",
-    authors: "Guu K., Lee K., Tung Z. et al.",
-    venue: "ICML 2020", type: "conf",
-    year: 2020,
-    abstract: "将知识检索模块融入语言模型预训练过程，令模型在预训练阶段即学会从外部语料中检索相关上下文，并用于填充掩码词。",
-    tags: ["预训练", "检索增强", "语言模型", "知识检索"]
-  },
-  {
-    title: "Large Language Models Can Be Easily Distracted by Irrelevant Context",
-    authors: "Shi F., Chen X., Misra K. et al.",
-    venue: "ICML 2023", type: "conf",
-    year: 2023,
-    abstract: "研究表明大型语言模型在面对包含不相关信息的上下文时容易产生注意力分散，导致推理错误，揭示了 LLM 在鲁棒性方面的重要挑战。",
-    tags: ["LLM", "鲁棒性", "上下文干扰", "推理"]
-  },
-  {
-    title: "Projected Residual Networks for Text Representation",
-    authors: "Wang X., Li Y., Chen Z.",
-    venue: "ACL 2022", type: "conf",
-    year: 2022,
-    abstract: "提出利用投影技术对文本残差表示进行降维和特征压缩，在文档分类和语义搜索任务中取得了更高效的表示性能。",
-    tags: ["投影技术", "文本表示", "残差网络", "语义搜索"]
-  }
-];
-
-function fillQuery(q) {
-  const el = document.getElementById('queryInput');
-  el.value = q;
-  autoResize(el);
-}
-
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = el.scrollHeight + 'px';
-}
-
-document.getElementById('queryInput').addEventListener('input', function() {
-  autoResize(this);
-});
-
-document.getElementById('queryInput').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearch(); }
-});
-
-function matchScore(paper, query) {
-  const q = query.toLowerCase();
-  let score = 0;
-  if (q.includes('检索') && (paper.tags.some(t => t.includes('检索')) || paper.abstract.includes('检索'))) score += 3;
-  if ((q.includes('rag') || q.includes('检索增强')) && paper.tags.some(t => t.includes('RAG') || t.includes('检索增强'))) score += 4;
-  if (q.includes('投影') && (paper.tags.some(t => t.includes('投影')) || paper.abstract.includes('投影'))) score += 5;
-  if (q.includes('多模态') && paper.tags.some(t => t.includes('多模态'))) score += 5;
-  if (q.includes('幻觉') && paper.abstract.includes('鲁棒')) score += 3;
-  if (q.includes('顶会') && paper.type === 'conf') score += 2;
-  if (q.includes('2023') && paper.year === 2023) score += 3;
-  if (paper.title.toLowerCase().includes(q.split(' ')[0])) score += 2;
-  const keywords = ['检索', 'rag', '投影', '预训练', '幻觉', '问答', '表示', '语言模型'];
-  keywords.forEach(k => {
-    if (q.includes(k) && (paper.abstract.includes(k) || paper.tags.some(t => t.includes(k)))) score += 1;
-  });
-  if (score === 0) score = Math.random() * 0.5;
-  return score;
-}
-
-function generateAnswer(query, papers) {
-  if (!papers.length) return null;
-  const q = query.toLowerCase();
-  
-  // 模拟后端返回的详细回答格式
-  let answer = `根据你提供的查询，以下是一些相关的文献：\n\n`;
-  
-  papers.forEach((paper, index) => {
-    answer += `${index + 1}. **${paper.authors}** - ${paper.title} (${paper.year})\n`;
-    answer += `   发表于：${paper.venue}\n`;
-    answer += `   摘要：${paper.abstract}\n`;
-    answer += `   关键词：${paper.tags.join('、')}\n\n`;
-  });
-  
-  answer += `这些研究涵盖了从理论框架到实际应用的广泛领域，包括但不限于 ${[...new Set(papers.flatMap(p => p.tags))].slice(0,3).join('、')} 等主题。\n`;
-  answer += `希望这对您有所帮助！如果需要更详细的信息或特定领域的深入探讨，请告诉我。`;
-  
-  return answer;
-}
-
-
-
-//=====新增
-async function runSearch() {
-  const query = document.getElementById('queryInput').value.trim();
-  if (!query) return;
-
-  const area = document.getElementById('resultsArea');
-  // 显示加载动画
-  area.innerHTML = `<div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span style="color:var(--color-text-tertiary);font-size:13px;"> 正在检索文献库...</span></div>`;
-
-  try {
-    const savedConfig = JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}');
-    const apiBaseUrl = (savedConfig.api?.url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-
-    // 【关键】调用你本地 8000 端口的 FastAPI
-    const response = await fetch(`${apiBaseUrl}/api/ask`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query, top_k: 4 })
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      renderResults(data); // 调用下面的渲染函数
-    } else {
-      area.innerHTML = `<div class="empty">搜索失败：${data.error_message}</div>`;
-    }
-  } catch (error) {
-    area.innerHTML = `<div class="empty">无法连接到后端服务器，请检查设置页中的后端地址，并确保服务已启动</div>`;
-  }
-}
-
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
@@ -549,38 +529,238 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+const queryInput = document.getElementById('queryInput');
+const sendBtn = document.getElementById('sendBtn');
 
-// 新增一个渲染函数，把后端返回的 JSON 变成漂亮的卡片
-function renderResults(data) {
-  const area = document.getElementById('resultsArea');
-  let html = `<div class="answer-box"><div class="answer-label">AI 回答</div><div class="answer-content">${escapeHtml(data.answer)}</div></div>`;
-  
-  if (data.references && data.references.length > 0) {
-    html += `<div class="results-header"><div class="results-count">找到 <strong>${data.references.length}</strong> 篇相关文献</div></div>`;
-    data.references.forEach((p, i) => {
-      const hits = Array.isArray(p.evidence_snippets) ? p.evidence_snippets : [];
-      let evidenceHtml = '';
-      if (hits.length > 0) {
-        evidenceHtml = '<div class="card-evidence">';
-        hits.forEach((h, j) => {
-          const pg = h.page != null ? `第 ${h.page} 页` : '页码未知';
-          evidenceHtml += `<div class="evidence-item"><div class="evidence-label">证据 ${j + 1} · ${escapeHtml(pg)}</div>${escapeHtml(h.content || '')}</div>`;
-        });
-        evidenceHtml += '</div>';
-      } else if (p.abstract) {
-        evidenceHtml = `<div class="card-abstract">${escapeHtml(p.abstract)}</div>`;
-      }
-      html += `
-        <div class="card">
-          <div class="card-top">
-            <span class="card-index">${String(i+1).padStart(2,'0')}</span>
-            <span class="card-title">${escapeHtml(p.title)}</span>
-          </div>
-          ${evidenceHtml}
-        </div>`;
-    });
+// —————————— 打字机速度配置（直接改这里！单位：毫秒）——————————
+const TYPE_SPEED = 5; // 越小越快，建议 10~50
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  let newHeight = el.scrollHeight;
+  if(newHeight > 150) newHeight = 150;
+  el.style.height = newHeight + 'px';
+}
+function fillQuery(text) {
+  queryInput.value = text;
+  autoResize(queryInput);
+  queryInput.focus();
+}
+queryInput.addEventListener('input', function() { autoResize(this); });
+queryInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearch(); }
+});
+
+// 格式化文本（加粗、引用、换行）
+function formatAnswerText(text) {
+  if(!text) return '';
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\[(\d+)\]/g, '<span class="ref-tag">[$1]</span>');
+  html = html.split('\\n').join('<br/>').split('\n').join('<br/>');
+  return html;
+}
+function appendUserMessage(text) {
+  const chatArea = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = 'message-row user';
+  div.innerHTML = `<div class="message user">${escapeHtml(text)}</div>`;
+  chatArea.appendChild(div);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+function appendAIMessageLoading(id) {
+  const chatArea = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = 'message-row ai';
+  div.id = id;
+  div.innerHTML = `
+    <div class="message ai">
+      <div class="ai-content">
+        <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>
+      </div>
+    </div>`;
+  chatArea.appendChild(div);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// —————————— 打字机核心函数 ——————————
+async function typeWriter(element, fullText, speed) {
+  const contentEl = element.querySelector('.ai-content');
+  contentEl.innerHTML = '';
+  let formatted = formatAnswerText(fullText);
+  // 逐字插入
+  for (let i = 0; i < formatted.length; i++) {
+    contentEl.innerHTML = formatted.substring(0, i + 1);
+    // 自动滚动到底部
+    document.getElementById('chatArea').scrollTop = document.getElementById('chatArea').scrollHeight;
+    await new Promise(resolve => setTimeout(resolve, speed));
   }
-  area.innerHTML = html;
+}
+
+function renderSources(references, evidenceSummary) {
+  const sourcesArea = document.getElementById('sourcesArea');
+  if(!references || references.length === 0) {
+    sourcesArea.innerHTML = '<div class="empty-sources">未找到相关的引用文献</div>';
+    return;
+  }
+  let html = '';
+  references.forEach((ref, idx) => {
+    let titleText = escapeHtml(ref.title || '未知文献');
+
+    // 1. 处理作者 Tag：只取第一作者并追加“等”
+    let authorTagHtml = '';
+    if (ref.authors && ref.authors !== 'Unknown' && ref.authors !== 'unknown') {
+      const authorArray = String(ref.authors).split(',');
+      const firstAuthor = authorArray[0].trim();
+      const displayAuthor = authorArray.length > 1 ? `${firstAuthor} 等` : firstAuthor;
+      authorTagHtml = `<span class="el-tag">👤 ${escapeHtml(displayAuthor)}</span>`;
+    }
+    
+    // 2. 处理年份 Tag
+    let yearTagHtml = '';
+    if (ref.year) {
+      yearTagHtml = `<span class="el-tag el-tag--success">📅 ${escapeHtml(ref.year)}</span>`;
+    }
+
+    // 3. 处理期刊/会议 Tag (新增)
+    let venueTagHtml = '';
+    if (ref.venue && ref.venue !== 'N/A' && ref.venue.toLowerCase() !== 'unknown') {
+      // 加上 title 属性，鼠标悬浮时展示完整名称；内部套一个 span 用于超出截断
+      venueTagHtml = `<span class="el-tag el-tag--warning" title="${escapeHtml(ref.venue)}">
+        🏛️ <span class="tag-truncate" style="margin-left: 2px;">${escapeHtml(ref.venue)}</span>
+      </span>`;
+    }
+
+    // 4. 组合 Tags 容器 (把 venueTagHtml 也加进去)
+    let tagsRowHtml = '';
+    if (authorTagHtml || yearTagHtml || venueTagHtml) {
+      tagsRowHtml = `<div class="source-tags-row">${authorTagHtml}${yearTagHtml}${venueTagHtml}</div>`;
+    }
+    
+    // 5. 调整 Meta 信息（仅保留页码）
+    let metaText = '';
+    if (ref.page) {
+      metaText = escapeHtml(`p. ${ref.page}`);
+    }
+    
+    let summaryHtml = '';
+    const snippets = Array.isArray(ref.evidence_snippets) ? ref.evidence_snippets : [];
+    if (snippets.length) {
+      summaryHtml += `<div class="source-summary"><div class="source-summary-label">证据摘要</div>`;
+      snippets.forEach((snippet, sidx) => {
+        summaryHtml += `<div class="snippet-item">${escapeHtml(snippet.content || '')}</div>`;
+      });
+      summaryHtml += `</div>`;
+    } else if(ref.abstract) {
+      summaryHtml += `<div class="source-summary-label">摘要</div><div>${escapeHtml(ref.abstract)}</div></div>`;
+    } else if (evidenceSummary && evidenceSummary.length > idx) {
+      summaryHtml += `<div class="source-summary"><div class="source-summary-label">证据摘要</div><div>${escapeHtml(evidenceSummary[idx])}</div></div>`;
+    }
+    
+    // 【重要清理】：由于期刊信息已经放入了上面的 venueTagHtml，这里要把旧的 badgeHtml 删掉或置空，防止重复显示！
+    // 删掉原本的: let badgeHtml = ref.venue ? `<span class="source-badge">${escapeHtml(ref.venue)}</span>` : '';
+    let badgeHtml = '';
+    
+    // --- 修改这里的按钮生成逻辑 ---
+    let actionBtnHtml = '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">';
+    
+    // 按钮 1：在 Zotero 中打开
+    if (ref.attachment_key) {
+      const pageParam = ref.page ? `?page=${ref.page}` : '';
+      const zoteroUrl = `zotero://open-pdf/library/items/${ref.attachment_key}${pageParam}`;
+      actionBtnHtml += `<a href="${zoteroUrl}" class="zotero-link-btn" style="margin-top: 0;">📖 在 Zotero 中打开 (P${ref.page || 1}页)</a>`;
+    } 
+    
+    // 按钮 2：调用系统本地打开
+    if (ref.source_path) {
+      const safePath = ref.source_path.replace(/\\/g, '\\\\'); 
+      const pageText = ref.page ? ` (P${ref.page}页)` : '';
+      // 注意：我们在按钮文字上也加上了页码提示，方便你手动翻页
+      actionBtnHtml += `<button onclick="openLocalFile('${safePath}')" class="zotero-link-btn" style="margin-top: 0;">📁 本地 PDF 阅读器中打开</button>`;
+    }
+    
+    actionBtnHtml += '</div>';
+    // ---------------------------------
+
+    // 注意中间增加了 ${tagsRowHtml} 变量
+    html += `
+      <div class="source-card">
+        <div class="source-card-index">[${idx + 1}]</div>
+        <div class="source-card-title">${titleText}</div>
+        ${tagsRowHtml}
+        ${metaText ? `<div class="source-card-meta">${metaText}</div>` : ''}
+        ${summaryHtml}
+        ${actionBtnHtml}
+      </div>`;
+  });
+  sourcesArea.innerHTML = html;
+}
+
+// ==============================================
+// 【完整恢复】请求后端打开本地文件函数（无删减）
+// ==============================================
+async function openLocalFile(filePath) {
+  try {
+    const savedConfig = JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}');
+    const apiBaseUrl = (savedConfig.api?.url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+    
+    // 完整后端请求逻辑
+    const response = await fetch(`${apiBaseUrl}/api/open_local_file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath })
+    });
+    
+    const data = await response.json();
+    if (!data.success) {
+      alert("无法打开文件：" + data.error);
+    }
+  } catch (error) {
+    alert("请求后端打开文件失败，请确保后端服务正常运行。");
+  }
+}
+
+// —————————— 主请求函数（零后端改动！）——————————
+async function runSearch() {
+  const query = queryInput.value.trim();
+  if (!query) return;
+
+  appendUserMessage(query);
+  const msgId = 'msg-' + Date.now();
+  appendAIMessageLoading(msgId);
+  const aiMsgEl = document.getElementById(msgId);
+
+  queryInput.value = '';
+  queryInput.style.height = 'auto';
+  sendBtn.disabled = true;
+
+  try {
+    const savedConfig = JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}');
+    const apiBaseUrl = (savedConfig.api?.url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+    
+    // 【重要】还是用你原来的接口，不用改后端！
+    const response = await fetch(`${apiBaseUrl}/api/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query, top_k: 4 })
+    });
+    const data = await response.json();
+
+    if (data.success) {
+      // —— 右侧 SOURCES 立刻显示 ——
+      renderSources(data.references, data.evidence_summary);
+      // —— 中间回答 打字机逐字输出 ——
+      await typeWriter(aiMsgEl, data.answer || '未能生成回答。', TYPE_SPEED);
+    } else {
+      aiMsgEl.querySelector('.ai-content').innerHTML = 
+        `<span style="color:#f56c6c">搜索失败：${escapeHtml(data.error_message)}</span>`;
+    }
+  } catch (error) {
+    aiMsgEl.querySelector('.ai-content').innerHTML = 
+      `<span style="color:#f56c6c">无法连接到后端服务器，请检查设置页中的后端地址，并确保服务已启动</span>`;
+  } finally {
+    sendBtn.disabled = false;
+  }
 }
 
 function mergeServerConfigToLocalStorage(data) {
@@ -598,97 +778,40 @@ function mergeServerConfigToLocalStorage(data) {
       api: { url: existing.api?.url || 'http://127.0.0.1:8000' },
     };
     localStorage.setItem('zoteroRagConfig', JSON.stringify(merged));
-  } catch (_) { /* ignore */ }
-}
-
-function renderResults(data) {
-  const area = document.getElementById('resultsArea');
-  const answerLabel = data.answer_type === 'direct_answer' ? 'AI 答案' : '检索结果';
-  let html = `<div class="answer-box"><div class="answer-label">${escapeHtml(answerLabel)}</div><div class="answer-content">${escapeHtml(data.answer || '')}</div></div>`;
-
-  if (Array.isArray(data.evidence_summary) && data.evidence_summary.length) {
-    html += `<div class="card" style="cursor:default"><div class="card-title" style="margin-bottom:10px;">证据摘要</div><div class="card-evidence" style="padding-left:0">`;
-    data.evidence_summary.forEach((item, idx) => {
-      html += `<div class="evidence-item"><div class="evidence-label">摘要 ${idx + 1}</div>${escapeHtml(item)}</div>`;
-    });
-    html += `</div></div>`;
-  }
-
-  if (Array.isArray(data.references) && data.references.length) {
-    html += `<div class="results-header"><div class="results-count">引用与相关文献 <strong>${data.references.length}</strong></div></div>`;
-    data.references.forEach((ref, idx) => {
-      const snippets = Array.isArray(ref.evidence_snippets) ? ref.evidence_snippets : [];
-      html += `<div class="card">
-        <div class="card-top">
-          <div class="card-index">${String(idx + 1).padStart(2, '0')}</div>
-          <div class="card-title">${escapeHtml(ref.title || '未知文献')}</div>
-        </div>
-        <div class="card-meta">
-          ${ref.page ? `<span>第 ${ref.page} 页</span>` : ''}
-          ${ref.year ? `<span>${escapeHtml(String(ref.year))}</span>` : ''}
-          ${ref.venue ? `<span>${escapeHtml(ref.venue)}</span>` : ''}
-        </div>`;
-      if (ref.abstract) {
-        html += `<div class="card-abstract">${escapeHtml(ref.abstract)}</div>`;
-      }
-      if (snippets.length) {
-        html += `<div class="card-evidence">`;
-        snippets.forEach((snippet, sidx) => {
-          html += `<div class="evidence-item"><div class="evidence-label">证据 ${sidx + 1}${snippet.page ? ` · 第 ${snippet.page} 页` : ''}</div>${escapeHtml(snippet.content || '')}</div>`;
-        });
-        html += `</div>`;
-      }
-      html += `</div>`;
-    });
-  }
-
-  area.innerHTML = html;
+  } catch (_) {}
 }
 
 async function checkConfigBeforeUse() {
   const notice = document.getElementById('configNotice');
   const apiBaseUrl = 'http://127.0.0.1:8000';
-
   try {
     const cfgRes = await fetch(`${apiBaseUrl}/api/config`);
     const data = await cfgRes.json();
-
-    if (cfgRes.ok && data.success) {
-      mergeServerConfigToLocalStorage(data);
-    }
-
+    if (cfgRes.ok && data.success) mergeServerConfigToLocalStorage(data);
     const missingConfig = !cfgRes.ok || !data.success || !data.zotero_path || !data.api_key_set;
-
     if (missingConfig) {
       notice.style.display = 'block';
       notice.innerHTML = `首次使用请先完成配置（PDF 文件夹、API Key 等）。<a href="settings.html?returnTo=main">点击前往设置</a>`;
       return;
     }
-
     let healthRes = await fetch(`${apiBaseUrl}/health`);
     let health = await healthRes.json();
-
     if (!health.ready) {
-      await fetch(`${apiBaseUrl}/api/init`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      await fetch(`${apiBaseUrl}/api/init`, { method: 'POST' });
       healthRes = await fetch(`${apiBaseUrl}/health`);
       health = await healthRes.json();
     }
-
     if (!health.ready) {
       notice.style.display = 'block';
-      const err = health.init_error ? escapeHtml(health.init_error) : '引擎未能就绪';
-      notice.innerHTML = `后端引擎未就绪：${err} <a href="settings.html?returnTo=main">检查设置</a>`;
+      notice.innerHTML = `后端引擎未就绪：${health.init_error || '引擎未能就绪'} <a href="settings.html?returnTo=main">检查设置</a>`;
       return;
     }
-
     notice.style.display = 'none';
   } catch (error) {
     notice.style.display = 'block';
     notice.innerHTML = `后端未启动，无法查询文献。请先启动服务，再到设置页检查配置。`;
   }
 }
-
-
 checkConfigBeforeUse();
 </script>
 </body>

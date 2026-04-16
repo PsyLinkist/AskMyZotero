@@ -39,6 +39,7 @@ class ReferenceSnippet(BaseModel):
     page: Optional[int] = None
     score: float = 0.0
     evidence_snippets: List[EvidenceHit] = Field(default_factory=list)
+    attachment_key: Optional[str] = None  # <-- 新增这一行
 
 
 class QueryResponse(BaseModel):

@@ -9,7 +9,9 @@ from pathlib import Path
 import os
 import sys
 import shutil
-
+import subprocess
+import platform
+from pydantic import BaseModel
 from src.api_models import (
     QueryRequest,
     QueryResponse,
@@ -184,6 +186,10 @@ async def ask_endpoint(request: QueryRequest):
                     source_path=p.get("source_path", p.get("title", "unknown")),
                     page=(p.get("evidences", [{}])[0].get("page") if p.get("evidences") else p.get("page")),
                     score=p.get("score", 0.0),
+
+                    # --- 【关键修改】：如果找不到 attachment_key，直接从 source_path 中提取上一级文件夹名称 ---
+                    attachment_key=p.get("attachment_key") or (Path(p.get("source_path", "")).parent.name if "storage" in p.get("source_path", "") else None),
+                    # ---------------------------------------------------------------------------------
                     evidence_snippets=[
                         EvidenceHit(
                             page=h.get("page"),
@@ -295,6 +301,27 @@ async def init_engine():
         GLOBAL_CONTEXT["agent"] = None
         GLOBAL_CONTEXT["init_error"] = str(e)
         return RagConfigResponse(success=False, message=f"引擎初始化失败：{e}")
+
+class OpenFileRequest(BaseModel):
+    path: str
+# 假设你的 router 是 app，直接加在 app 下面即可
+@app.post("/api/open_local_file")
+async def open_local_file(req: OpenFileRequest):
+    file_path = req.path
+    if not os.path.exists(file_path):
+        return {"success": False, "error": "文件不存在"}
+    
+    try:
+        # 根据不同操作系统调用默认程序打开文件
+        if platform.system() == 'Windows':
+            os.startfile(file_path)
+        elif platform.system() == 'Darwin':  # macOS
+            subprocess.call(['open', file_path])
+        else:  # Linux
+            subprocess.call(['xdg-open', file_path])
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":
