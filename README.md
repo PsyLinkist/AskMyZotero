@@ -61,3 +61,8 @@ AskMyZotero/
 - section 权重采用“基础权重 + 按问题类型覆盖”的两层策略
 - 双栏 PDF 提取后的常见 IEEE 页眉页脚噪声已做一轮清洗
 - 文本块缓存会根据 `chunk_strategy` 自动判断是否需要重建
+
+# 作业要求文档，警钟长鸣
+![](https://raw.githubusercontent.com/PsyLinkist/LearningBlogPics/main/20260416112442354.png)
+![](https://raw.githubusercontent.com/PsyLinkist/LearningBlogPics/main/20260416112511464.png)
+![](https://raw.githubusercontent.com/PsyLinkist/LearningBlogPics/main/20260416112550479.png)
