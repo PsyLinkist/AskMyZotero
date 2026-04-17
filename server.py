@@ -24,6 +24,26 @@ from src.api_models import (
 from src.config import parse_args, resolve_config
 from src.qa_agent import ZoteroAgent
 
+# yzx 索引重建(P0)
+from fastapi import BackgroundTasks
+
+# yzx 索引重建(P0) 前端进度条
+GLOBAL_CONTEXT: dict = {
+    "agent": None,
+    "init_error": "",
+    "rebuild_status": "idle", # 取值: idle, processing, success, failed
+    "rebuild_error": "",
+    # 新增进度跟踪字段
+    "rebuild_progress": {
+        "stage": "",       # 当前阶段，如 "scanning", "parsing", "embedding", "saving"
+        "current": 0,      # 当前处理的数量
+        "total": 0,        # 总数量
+        "percent": 0,      # 百分比 (0-100)
+        "message": ""      # 具体的提示信息，如 "正在解析第 10 个 PDF..."
+    }
+}
+
+
 
 def resource_path(name: str) -> Path:
     """兼容 PyInstaller onefile 的资源路径解析。"""
@@ -382,6 +402,107 @@ async def open_local_file(req: OpenFileRequest):
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+"""
+yzx 索引重建 (P0)
+"""
+# 在 GLOBAL_CONTEXT 中增加重建状态管理
+GLOBAL_CONTEXT: dict = {
+    "agent": None,
+    "init_error": "",
+    "rebuild_status": "idle", # 取值: idle, processing, success, failed
+    "rebuild_error": ""
+}
+
+# 修改 init_agent 函数，支持强制重建参数
+def init_agent(force_rebuild: bool = False) -> tuple[bool, str]:
+    """按当前配置初始化 Agent；支持通过 force_rebuild 强制触发索引重建。"""
+    args = parse_args()
+    config = resolve_config(args)
+    
+    # 核心复用：如果指定强制重建，则修改配置对象
+    if force_rebuild:
+        config.rebuild = True
+        print("🚀 触发强制重建模式...")
+
+    try:
+        GLOBAL_CONTEXT["agent"] = ZoteroAgent(config)
+        GLOBAL_CONTEXT["init_error"] = ""
+        return True, "后端引擎已就绪"
+    except Exception as e:
+        GLOBAL_CONTEXT["agent"] = None
+        GLOBAL_CONTEXT["init_error"] = str(e)
+        return False, str(e)
+
+# # 执行重建的后台任务函数
+# def task_rebuild_index():
+#     GLOBAL_CONTEXT["rebuild_status"] = "processing"
+#     GLOBAL_CONTEXT["rebuild_error"] = ""
+#     try:
+#         ok, msg = init_agent(force_rebuild=True)
+#         if ok:
+#             GLOBAL_CONTEXT["rebuild_status"] = "success"
+#         else:
+#             GLOBAL_CONTEXT["rebuild_status"] = "failed"
+#             GLOBAL_CONTEXT["rebuild_error"] = msg
+#     except Exception as e:
+#         GLOBAL_CONTEXT["rebuild_status"] = "failed"
+#         GLOBAL_CONTEXT["rebuild_error"] = str(e)
+
+# 新增 API：触发重建
+@app.post("/api/rebuild")
+async def trigger_rebuild(background_tasks: BackgroundTasks):
+    if GLOBAL_CONTEXT["rebuild_status"] == "processing":
+        return {"success": False, "message": "索引重建正在进行中，请勿重复提交"}
+    
+    # 放入后台执行，避免 HTTP 请求超时
+    background_tasks.add_task(task_rebuild_index)
+    return {"success": True, "message": "已启动后台重建任务"}
+
+# 新增 API：查询重建进度
+@app.get("/api/rebuild/status")
+async def get_rebuild_status():
+    return {
+        "status": GLOBAL_CONTEXT["rebuild_status"],
+        "error": GLOBAL_CONTEXT["rebuild_error"],
+        "progress": GLOBAL_CONTEXT.get("rebuild_progress", {}) # yzx 前端进度条返回进度信息
+    }
+
+def _update_progress(stage: str, current: int, total: int, message: str = ""):
+    percent = int((current / total * 100)) if total > 0 else 0
+    GLOBAL_CONTEXT["rebuild_progress"] = {
+        "stage": stage,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "message": message
+    }
+
+def task_rebuild_index():
+    GLOBAL_CONTEXT["rebuild_status"] = "processing"
+    GLOBAL_CONTEXT["rebuild_error"] = ""
+    GLOBAL_CONTEXT["rebuild_progress"] = {"stage": "starting", "current": 0, "total": 0, "percent": 0, "message": "准备开始..."}
+    try:
+        # 获取配置并注入回调
+        args = parse_args()
+        config = resolve_config(args)
+        config.rebuild = True
+        config.progress_callback = _update_progress # 注入回调
+
+        print("🚀 触发强制重建模式...")
+        GLOBAL_CONTEXT["agent"] = ZoteroAgent(config)
+        GLOBAL_CONTEXT["rebuild_status"] = "success"
+        GLOBAL_CONTEXT["rebuild_progress"]["message"] = "重建完成"
+    except Exception as e:
+        GLOBAL_CONTEXT["rebuild_status"] = "failed"
+        GLOBAL_CONTEXT["rebuild_error"] = str(e)
+"""
+PO到这结束
+"""
+
+
+
 
 
 if __name__ == "__main__":
