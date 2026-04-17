@@ -238,7 +238,7 @@ class ZoteroAgent:
         if _uses_paper_list_answer(query_bundle.intent):
             paper_limit = max(top_k, 8)
             papers = aggregate_to_papers(query_bundle, chunks, top_papers=paper_limit)
-            payload = generate_answer(query_bundle, papers)
+            payload = generate_answer(query_bundle, papers, self.llm)
             return self._build_response(
                 success=True,
                 intent=query_bundle.intent,
@@ -377,7 +377,7 @@ class ZoteroAgent:
             page_text = f"第 {page} 页" if page else "页码未知"
             answer_context = str(chunk.get("answer_context") or chunk.get("text") or "")
             raw_text = str(chunk.get("raw_text") or chunk.get("text") or "")
-            context_parts.append(f"[证据 {index}] {title} | {page_text}\n{answer_context}")
+            context_parts.append(f"[{index}] {title} | {page_text}\n{answer_context}")
             snippet = raw_text.replace("\n", " ").strip()
             if len(snippet) > 120:
                 snippet = snippet[:117] + "..."
@@ -391,9 +391,12 @@ class ZoteroAgent:
                     "你是一个严谨的个人文献知识库问答助手。"
                     "请根据提供的文献证据直接回答问题，优先给出明确结论。"
                     "如果证据不足，请明确说明不确定，不要编造。"
-                    "回答保持简洁，并指出核心依据。",
+                    "回答保持简洁。"
+                    "如需引用证据，只能使用编号引用 [1]、[2] 这种形式。"
+                    "不要使用“证据1”“资料1”“来源1”等写法。"
+                    "不要输出参考文献列表或重复展开文献标题、作者、年份。",
                 ),
-                ("human", "问题：{query}\n\n证据：\n{context}"),
+                ("human", "问题：{query}\n\n证据：\n{context}\n\n请直接输出回答正文。"),
             ]
         )
         chain = prompt | self.llm | StrOutputParser()
@@ -401,6 +404,7 @@ class ZoteroAgent:
             answer = chain.invoke({"query": query_bundle.raw_query, "context": context}).strip()
             if not answer:
                 raise ValueError("empty answer")
+            answer = self._sanitize_direct_answer(answer, len(evidence_chunks))
             return self._build_response(
                 success=True,
                 intent=query_bundle.intent,
@@ -439,6 +443,26 @@ class ZoteroAgent:
                 },
             )
 
+    def _sanitize_direct_answer(self, answer: str, evidence_count: int) -> str:
+        cleaned = str(answer or "").strip()
+        if not cleaned:
+            return ""
+
+        cleaned = re.sub(r"\[\s*证据\s*(\d+)\s*\]", r"[\1]", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"（\s*证据\s*(\d+)\s*）", r"[\1]", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\(\s*证据\s*(\d+)\s*\)", r"[\1]", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"证据\s*(\d+)", r"[\1]", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"来源\s*(\d+)", r"[\1]", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"\[\s*(\d+)\s*\]",
+            lambda m: f"[{m.group(1)}]" if 1 <= int(m.group(1)) <= evidence_count else "",
+            cleaned,
+        )
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        if evidence_count > 0 and not re.search(r"\[(\d+)\]", cleaned):
+            cleaned = f"{cleaned} [1]".strip()
+        return cleaned
+
     def _fallback_direct_answer(self, query_bundle: QueryBundle, evidence_chunks: list[dict[str, Any]]) -> str:
         if not evidence_chunks:
             return f"当前文献库中暂时没有找到足以回答“{query_bundle.raw_query}”的直接证据。"
@@ -451,8 +475,32 @@ class ZoteroAgent:
             snippet = snippet[:217] + "..."
         return (
             f"我已经在文献库中找到了与“{query_bundle.raw_query}”最相关的证据。"
-            f"当前最强证据来自《{title}》({page_text})。\n\n依据：{snippet}"
+            f"当前结论主要基于 [1]。\n\n依据：{snippet}"
         )
+
+    def _ensure_numbered_citations(self, answer: str, source_count: int) -> str:
+        cleaned = str(answer or "").strip()
+        if source_count <= 0:
+            return cleaned
+        if re.search(r"\[(\d+)\]", cleaned):
+            return cleaned
+        suffix = "".join(f"[{index}]" for index in range(1, min(source_count, 3) + 1))
+        return f"{cleaned} {suffix}".strip()
+
+    def _resolve_attachment_key(self, metadata: dict[str, Any]) -> str | None:
+        attachment_key = str(metadata.get("attachment_key") or "").strip()
+        if attachment_key:
+            return attachment_key
+
+        source_path = str(metadata.get("source_path") or metadata.get("source") or "").strip()
+        if "storage" not in source_path:
+            return None
+
+        try:
+            parent_name = Path(source_path).parent.name
+        except Exception:
+            return None
+        return parent_name or None
 
     def _format_docs(self, docs: list[Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         references: list[dict[str, Any]] = []
@@ -491,7 +539,7 @@ class ZoteroAgent:
                 "context_after": metadata.get("context_after", ""),
                 "chunk_local_index": metadata.get("chunk_local_index"),
                 "chunk_local_total": metadata.get("chunk_local_total"),
-                "attachment_key": metadata.get("attachment_key"),  # <--- 新增这一行
+                "attachment_key": self._resolve_attachment_key(metadata),
             }
             chunks.append(item)
             references.append(
@@ -502,7 +550,7 @@ class ZoteroAgent:
                     "content": raw_text,
                     "score": item["score"],
                     "raw_score": item["raw_score"],
-                    "attachment_key": metadata.get("attachment_key"), # <-- 新增这一行
+                    "attachment_key": self._resolve_attachment_key(metadata),
                 }
             )
         return references, chunks
@@ -523,15 +571,20 @@ class ZoteroAgent:
         debug: dict[str, Any] | None = None,
         error_msg: str | None = None,
     ) -> Dict[str, Any]:
+        effective_references = references or []
+        effective_snippets = snippets or []
+        effective_evidence_summary = evidence_summary or []
+        effective_source_count = len(effective_references) if effective_references else len(effective_snippets)
+        normalized_answer = self._ensure_numbered_citations(answer, effective_source_count) if success else answer
         payload: Dict[str, Any] = {
             "success": success,
             "intent": intent,
-            "answer": answer,
+            "answer": normalized_answer,
             "answer_type": answer_type,
-            "references": references or [],
-            "snippets": snippets or [],
+            "references": effective_references,
+            "snippets": effective_snippets,
             "papers": papers or [],
-            "evidence_summary": evidence_summary or [],
+            "evidence_summary": effective_evidence_summary,
             "status": status,
             "confidence": confidence,
             "debug": debug or {},

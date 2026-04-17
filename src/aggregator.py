@@ -5,6 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
 from src.domain_models import AnswerPayload, EvidenceRecord, PaperCandidate
 
 
@@ -196,22 +199,107 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
     return papers[:top_papers]
 
 
-def _format_paper_line(index: int, paper: PaperCandidate) -> str:
-    year_text = f" ({paper.year})" if paper.year else ""
-    venue_text = f", {paper.venue}" if paper.venue else ""
-    reasons = "；".join(paper.match_reason[:3]) if paper.match_reason else "检索到相关证据"
-    lines = [f"{index}. {paper.title}{year_text}{venue_text}", f"- 理由：{reasons}"]
-    if paper.evidences:
-        top_evidence = paper.evidences[0]
-        page_text = f"第 {top_evidence.page} 页，" if top_evidence.page else ""
-        snippet = top_evidence.text.strip().replace("\n", " ")
-        if len(snippet) > 240:
-            snippet = snippet[:237] + "..."
-        lines.append(f"- 证据：{page_text}{snippet}")
-    return "\n".join(lines)
+def _build_paper_context(index: int, paper: PaperCandidate) -> str:
+    parts = [f"[{index}]"]
+    if paper.match_reason:
+        parts.append(f"匹配原因：{'；'.join(paper.match_reason[:3])}")
+
+    evidence_lines: list[str] = []
+    for evidence in paper.evidences[:2]:
+        page_text = f"第 {evidence.page} 页" if evidence.page else "页码未知"
+        section_text = evidence.section or "正文"
+        snippet = evidence.text.strip().replace("\n", " ")
+        if len(snippet) > 220:
+            snippet = snippet[:217] + "..."
+        evidence_lines.append(f"- {page_text} · {section_text}：{snippet}")
+
+    if evidence_lines:
+        parts.append("证据：")
+        parts.extend(evidence_lines)
+    return "\n".join(parts)
 
 
-def generate_answer(query_bundle: Any, papers: list[PaperCandidate]) -> AnswerPayload:
+def _fallback_answer_text(query_bundle: Any, papers: list[PaperCandidate]) -> str:
+    intent = _get_bundle_value(query_bundle, "intent", "paper_lookup")
+    citations = "".join(f"[{index}]" for index, _ in enumerate(papers[:5], start=1))
+    if intent == "survey":
+        return f"与该主题最相关的论文主要见 {citations}。详细题名、作者、页码和证据摘要请查看右侧 SOURCES。"
+    return f"与该问题最相关的论文见 {citations}。详细题名、作者、页码和证据摘要请查看右侧 SOURCES。"
+
+
+def _sanitize_answer_text(answer_text: str, paper_count: int) -> str:
+    if not answer_text:
+        return ""
+
+    cleaned_lines: list[str] = []
+    for raw_line in str(answer_text).splitlines():
+        line = raw_line.strip()
+        if not line:
+            cleaned_lines.append("")
+            continue
+
+        lower_line = line.lower()
+        if re.match(r"^\d+\.\s+", line):
+            continue
+        if re.match(r"^[-*]\s*(理由|证据|参考文献|来源)\s*[：:]", line):
+            continue
+        if re.match(r"^(理由|证据|参考文献|来源)\s*[：:]", line):
+            continue
+        if any(keyword in lower_line for keyword in ("authors:", "author:", "venue:", "year:", "title:")):
+            continue
+
+        line = re.sub(r"\[\s*(\d+)\s*\]", lambda m: f"[{m.group(1)}]" if 1 <= int(m.group(1)) <= paper_count else "", line)
+        cleaned_lines.append(line)
+
+    cleaned = "\n".join(cleaned_lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if not re.search(r"\[(\d+)\]", cleaned):
+        suffix = "".join(f"[{index}]" for index in range(1, min(paper_count, 5) + 1))
+        cleaned = f"{cleaned} {suffix}".strip()
+    return cleaned
+
+
+def _generate_llm_answer_text(query_bundle: Any, papers: list[PaperCandidate], llm: Any) -> tuple[str, dict[str, Any]]:
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是一个学术文献助手。请基于给定论文证据回答用户问题。"
+                "回答应自然、简洁、有信息量。"
+                "如需引用来源，只能使用编号引用，如 [1]、[2]。"
+                "不要输出论文标题、作者、年份、期刊、页码。"
+                "不要输出“理由：”“证据：”“参考文献：”“来源：”等列表。"
+                "详细文献信息由界面右侧 SOURCES 面板展示，你只负责正文回答。"
+            ),
+            (
+                "human",
+                "用户问题：{query}\n\n"
+                "候选论文证据：\n{paper_context}\n\n"
+                "请直接给出回答正文，只使用 [n] 形式引用。",
+            ),
+        ]
+    )
+    paper_context = "\n\n".join(
+        _build_paper_context(index, paper) for index, paper in enumerate(papers, start=1)
+    )
+    messages = prompt.format_messages(
+        query=_get_bundle_value(query_bundle, "raw_query", ""),
+        paper_context=paper_context,
+    )
+    chain = prompt | llm | StrOutputParser()
+    raw_response = chain.invoke(
+        {
+            "query": _get_bundle_value(query_bundle, "raw_query", ""),
+            "paper_context": paper_context,
+        }
+    ).strip()
+    return raw_response, {
+        "prompt_messages": [{"type": getattr(message, "type", "unknown"), "content": str(getattr(message, "content", ""))} for message in messages],
+        "raw_response": raw_response,
+    }
+
+
+def generate_answer(query_bundle: Any, papers: list[PaperCandidate], llm: Any | None = None) -> AnswerPayload:
     intent = _get_bundle_value(query_bundle, "intent", "paper_lookup")
     section_weights = resolve_section_weights(intent)
     raw_query = _get_bundle_value(query_bundle, "raw_query", "")
@@ -227,10 +315,6 @@ def generate_answer(query_bundle: Any, papers: list[PaperCandidate]) -> AnswerPa
             debug={"intent": intent, "section_weights": section_weights},
         )
 
-    lines = []
-    for index, paper in enumerate(papers, start=1):
-        lines.append(_format_paper_line(index, paper))
-
     evidence_summary: list[str] = []
     for paper in papers[:3]:
         if paper.evidences:
@@ -238,13 +322,24 @@ def generate_answer(query_bundle: Any, papers: list[PaperCandidate]) -> AnswerPa
             page_text = f"第 {top_evidence.page} 页" if top_evidence.page else "未标页码"
             evidence_summary.append(f"{paper.title}：{page_text} 命中 {top_evidence.section or '正文'} 证据")
 
+    answer_debug: dict[str, Any] = {"mode": "fallback"}
+    answer_text = _fallback_answer_text(query_bundle, papers)
+    if llm is not None:
+        try:
+            raw_answer_text, llm_debug = _generate_llm_answer_text(query_bundle, papers, llm)
+            answer_text = _sanitize_answer_text(raw_answer_text, len(papers))
+            answer_debug = {"mode": "llm", "llm_answer": llm_debug}
+        except Exception as exc:
+            answer_debug = {"mode": "fallback", "error": str(exc)}
+            answer_text = _fallback_answer_text(query_bundle, papers)
+
     confidence = min(0.95, 0.5 + 0.08 * len(papers))
     return AnswerPayload(
-        answer_text="\n\n".join(lines),
+        answer_text=answer_text,
         papers=papers,
         confidence=confidence,
         status="ok",
         answer_type="paper_list",
         evidence_summary=evidence_summary,
-        debug={"intent": intent, "section_weights": section_weights},
+        debug={"intent": intent, "section_weights": section_weights, **answer_debug},
     )

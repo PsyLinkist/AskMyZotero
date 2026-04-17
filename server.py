@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 import uvicorn
 import yaml
+import re
 from pathlib import Path
 import os
 import sys
@@ -74,6 +75,54 @@ def _config_sufficient_for_agent(cfg: dict) -> bool:
     zp = str(cfg.get("zotero_path", "")).strip()
     key = str(cfg.get("api_key", "")).strip()
     return bool(zp and key)
+
+
+def _resolve_attachment_key(record: dict) -> str | None:
+    attachment_key = str(record.get("attachment_key") or "").strip()
+    if attachment_key:
+        return attachment_key
+
+    source_path = str(record.get("source_path") or record.get("source") or "").strip()
+    if "storage" not in source_path:
+        return None
+
+    try:
+        parent_name = Path(source_path).parent.name
+    except Exception:
+        return None
+    return parent_name or None
+
+
+def _extract_citation_indices(answer: str) -> list[int]:
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for match in re.finditer(r"\[(\d+)\]", str(answer or "")):
+        idx = int(match.group(1))
+        if idx not in seen:
+            seen.add(idx)
+            ordered.append(idx)
+    return ordered
+
+
+def _filter_and_remap_citations(answer: str, items: list[dict]) -> tuple[str, list[dict]]:
+    citation_indices = _extract_citation_indices(answer)
+    if not citation_indices:
+        return answer, items
+
+    valid_indices = [idx for idx in citation_indices if 1 <= idx <= len(items)]
+    if not valid_indices:
+        return answer, items
+
+    remap = {old_idx: new_idx for new_idx, old_idx in enumerate(valid_indices, start=1)}
+    filtered_items = [items[idx - 1] for idx in valid_indices]
+    remapped_answer = re.sub(
+        r"\[(\d+)\]",
+        lambda m: f"[{remap[int(m.group(1))]}]" if int(m.group(1)) in remap else "",
+        str(answer or ""),
+    )
+    remapped_answer = re.sub(r"\s{2,}", " ", remapped_answer)
+    remapped_answer = re.sub(r"\n{3,}", "\n\n", remapped_answer).strip()
+    return remapped_answer, filtered_items
 
 
 app = FastAPI(title="Zotero RAG API Server")
@@ -174,7 +223,14 @@ async def ask_endpoint(request: QueryRequest):
                 answer=""
             )
 
+        answer_text = result.get("answer", "")
         paper_items = result.get("papers", [])
+        snippet_items = result.get("snippets", [])
+        if paper_items:
+            answer_text, paper_items = _filter_and_remap_citations(answer_text, paper_items)
+        else:
+            answer_text, snippet_items = _filter_and_remap_citations(answer_text, snippet_items)
+
         if paper_items:
             references = [
                 ReferenceSnippet(
@@ -188,7 +244,7 @@ async def ask_endpoint(request: QueryRequest):
                     score=p.get("score", 0.0),
 
                     # --- 【关键修改】：如果找不到 attachment_key，直接从 source_path 中提取上一级文件夹名称 ---
-                    attachment_key=p.get("attachment_key") or (Path(p.get("source_path", "")).parent.name if "storage" in p.get("source_path", "") else None),
+                    attachment_key=_resolve_attachment_key(p),
                     # ---------------------------------------------------------------------------------
                     evidence_snippets=[
                         EvidenceHit(
@@ -209,9 +265,13 @@ async def ask_endpoint(request: QueryRequest):
                         or s.get("title")
                         or Path(str(s.get("source_path", s["source"]))).name
                     ),
+                    authors=", ".join(s.get("authors") or []) if isinstance(s.get("authors"), list) else (s.get("authors") or "Unknown"),
+                    venue=s.get("venue") or "N/A",
+                    year=s.get("year"),
                     abstract="",
                     source_path=s.get("source_path", s["source"]),
                     page=s.get("page"),
+                    attachment_key=_resolve_attachment_key(s),
                     evidence_snippets=[
                         EvidenceHit(
                             page=s.get("page"),
@@ -220,12 +280,12 @@ async def ask_endpoint(request: QueryRequest):
                         )
                     ],
                 )
-                for s in result.get("snippets", [])
+                for s in snippet_items
             ]
 
         return QueryResponse(
             success=True,
-            answer=result["answer"],
+            answer=answer_text,
             intent=result.get("intent", "paper_lookup"),
             answer_type=result.get("answer_type", "paper_list"),
             evidence_summary=result.get("evidence_summary", []),

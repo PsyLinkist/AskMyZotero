@@ -101,6 +101,7 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* Chat Area */
@@ -110,6 +111,7 @@ body {
   flex-direction: column;
   background-color: var(--el-bg-color-page);
   position: relative;
+  min-height: 0;
 }
 
 .chat-history {
@@ -177,6 +179,13 @@ body {
 }
 .ref-tag:hover {
   text-decoration: underline;
+}
+.ref-tag.is-jumpable {
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+.ref-tag.is-jumpable:hover {
+  background-color: var(--el-color-primary-light);
 }
 
 /* Input Area */
@@ -282,6 +291,7 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
 }
 .sidebar-header {
   padding: 24px 24px 12px 24px;
@@ -299,12 +309,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 .source-card {
   border: 1px solid var(--el-border-color);
   border-radius: 12px;
   padding: 16px;
   background-color: var(--el-bg-color-page);
+  scroll-margin-top: 16px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
   display: flex;
   flex-direction: column;
   /* 强制换行：防止任何过长内容撑破卡片 */
@@ -317,6 +330,11 @@ body {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 6px;
+}
+.source-card.source-card--active {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  background-color: #f8fbff;
 }
 .source-card-title {
   font-size: 14px;
@@ -488,7 +506,7 @@ body {
         <div class="message ai">
           <div class="ai-content">
             <p>你好！我是你的 Zotero 文献助手。</p>
-            <p>你可以用自然语言搜索你读过的文献，或者直接向我提问，我会基于你的文献库为你提供解答，并在右侧展示相关的文献证据摘要。</p>
+      <p>你可以用自然语言搜索你读过的文献，或者直接向我提问，我会基于你的文献库为你提供解答，并在右侧展示相关的引用文献。</p>
           </div>
         </div>
       </div>
@@ -515,7 +533,7 @@ body {
   <div class="sidebar">
     <div class="sidebar-header">SOURCES</div>
     <div class="sources-list" id="sourcesArea">
-      <div class="empty-sources">检索后将在此处显示引用文献与证据摘要</div>
+      <div class="empty-sources">检索后将在此处显示引用文献</div>
     </div>
   </div>
 </div>
@@ -556,9 +574,27 @@ function formatAnswerText(text) {
   if(!text) return '';
   let html = escapeHtml(text);
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\[(\d+)\]/g, '<span class="ref-tag">[$1]</span>');
+  html = html.replace(/\[(\d+)\]/g, '<span class="ref-tag is-jumpable" data-ref-index="$1">[$1]</span>');
   html = html.split('\\n').join('<br/>').split('\n').join('<br/>');
   return html;
+}
+let activeSourceCardTimer = null;
+function jumpToSource(refIndex) {
+  const index = Number(refIndex);
+  if (!Number.isInteger(index) || index < 1) return;
+  const sourceCard = document.getElementById(`source-card-${index}`);
+  if (!sourceCard) return;
+
+  sourceCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  if (activeSourceCardTimer) clearTimeout(activeSourceCardTimer);
+  document.querySelectorAll('.source-card--active').forEach(card => {
+    card.classList.remove('source-card--active');
+  });
+  sourceCard.classList.add('source-card--active');
+  activeSourceCardTimer = setTimeout(() => {
+    sourceCard.classList.remove('source-card--active');
+  }, 1800);
 }
 function appendUserMessage(text) {
   const chatArea = document.getElementById('chatArea');
@@ -644,18 +680,6 @@ function renderSources(references, evidenceSummary) {
     }
     
     let summaryHtml = '';
-    const snippets = Array.isArray(ref.evidence_snippets) ? ref.evidence_snippets : [];
-    if (snippets.length) {
-      summaryHtml += `<div class="source-summary"><div class="source-summary-label">证据摘要</div>`;
-      snippets.forEach((snippet, sidx) => {
-        summaryHtml += `<div class="snippet-item">${escapeHtml(snippet.content || '')}</div>`;
-      });
-      summaryHtml += `</div>`;
-    } else if(ref.abstract) {
-      summaryHtml += `<div class="source-summary-label">摘要</div><div>${escapeHtml(ref.abstract)}</div></div>`;
-    } else if (evidenceSummary && evidenceSummary.length > idx) {
-      summaryHtml += `<div class="source-summary"><div class="source-summary-label">证据摘要</div><div>${escapeHtml(evidenceSummary[idx])}</div></div>`;
-    }
     
     // 【重要清理】：由于期刊信息已经放入了上面的 venueTagHtml，这里要把旧的 badgeHtml 删掉或置空，防止重复显示！
     // 删掉原本的: let badgeHtml = ref.venue ? `<span class="source-badge">${escapeHtml(ref.venue)}</span>` : '';
@@ -668,13 +692,13 @@ function renderSources(references, evidenceSummary) {
     if (ref.attachment_key) {
       const pageParam = ref.page ? `?page=${ref.page}` : '';
       const zoteroUrl = `zotero://open-pdf/library/items/${ref.attachment_key}${pageParam}`;
-      actionBtnHtml += `<a href="${zoteroUrl}" class="zotero-link-btn" style="margin-top: 0;">📖 在 Zotero 中打开 (P${ref.page || 1}页)</a>`;
+      actionBtnHtml += `<a href="${zoteroUrl}" class="zotero-link-btn" style="margin-top: 0;">📖 在 Zotero 中打开 (P${ref.page || 1})</a>`;
     } 
     
     // 按钮 2：调用系统本地打开
     if (ref.source_path) {
       const safePath = ref.source_path.replace(/\\/g, '\\\\'); 
-      const pageText = ref.page ? ` (P${ref.page}页)` : '';
+      const pageText = ref.page ? ` (P${ref.page})` : '';
       // 注意：我们在按钮文字上也加上了页码提示，方便你手动翻页
       actionBtnHtml += `<button onclick="openLocalFile('${safePath}')" class="zotero-link-btn" style="margin-top: 0;">📁 本地 PDF 阅读器中打开</button>`;
     }
@@ -684,7 +708,7 @@ function renderSources(references, evidenceSummary) {
 
     // 注意中间增加了 ${tagsRowHtml} 变量
     html += `
-      <div class="source-card">
+      <div class="source-card" id="source-card-${idx + 1}" data-source-index="${idx + 1}">
         <div class="source-card-index">[${idx + 1}]</div>
         <div class="source-card-title">${titleText}</div>
         ${tagsRowHtml}
@@ -695,6 +719,12 @@ function renderSources(references, evidenceSummary) {
   });
   sourcesArea.innerHTML = html;
 }
+
+document.getElementById('chatArea').addEventListener('click', function(event) {
+  const refTag = event.target.closest('.ref-tag[data-ref-index]');
+  if (!refTag) return;
+  jumpToSource(refTag.dataset.refIndex);
+});
 
 // ==============================================
 // 【完整恢复】请求后端打开本地文件函数（无删减）
