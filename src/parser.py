@@ -110,13 +110,58 @@ def _dedupe_join_texts(*texts: str) -> str:
             merged.append(paragraph)
     return "\n\n".join(merged).strip()
 
+# yzx update for PO
+# def load_pdf_documents_from_files(
+#     pdf_files: list[PdfFileInfo],
+#     attachment_metadata: dict[str, dict] | None = None,
+# ) -> list[Document]:
+#     docs: list[Document] = []
+#     for item in tqdm(pdf_files, desc="📄 解析 PDF 进度"):
+#         try:
+#             loader = PyPDFLoader(str(item.abs_path))
+#             file_docs = loader.load()
+#             for doc in file_docs:
+#                 doc.page_content = _clean_page_text(doc.page_content)
+#                 doc.metadata["source"] = str(item.abs_path)
+#                 doc.metadata["rel_path"] = item.rel_path
+#                 doc.metadata["file_size"] = item.size
+#                 doc.metadata["file_mtime"] = item.mtime
+#                 meta = (attachment_metadata or {}).get(item.rel_path) or (attachment_metadata or {}).get(item.rel_path.split("/", 1)[0])
+#                 if meta:
+#                     doc.metadata["paper_id"] = meta.get("paper_id")
+#                     doc.metadata["paper_title"] = meta.get("paper_title")
+#                     doc.metadata["authors"] = meta.get("authors")
+#                     doc.metadata["year"] = meta.get("year")
+#                     doc.metadata["venue"] = meta.get("venue")
+#                     doc.metadata["doi"] = meta.get("doi")
+#                     doc.metadata["attachment_key"] = meta.get("attachment_key")
+#                     doc.metadata["parent_item_key"] = meta.get("parent_item_key")
+#             docs.extend(file_docs)
+#         except Exception as exc:
+#             print(f"⚠️ 跳过解析失败的文件: {item.rel_path}，原因: {exc}")
+#     if not docs:
+#         raise RuntimeError("未读取到任何 PDF 内容，请检查 Zotero storage 路径是否正确。")
+#     return docs
 
 def load_pdf_documents_from_files(
     pdf_files: list[PdfFileInfo],
     attachment_metadata: dict[str, dict] | None = None,
+    progress_callback: Any = None,  # [新增] 进度回调函数
 ) -> list[Document]:
     docs: list[Document] = []
-    for item in tqdm(pdf_files, desc="📄 解析 PDF 进度"):
+    total_files = len(pdf_files) # [新增] 获取总文件数用于计算进度百分比
+    
+    for idx, item in enumerate(tqdm(pdf_files, desc="📄 解析 PDF 进度")):
+        # --- [新增] 触发进度回调 ---
+        if progress_callback:
+            progress_callback(
+                stage="parsing",
+                current=idx + 1,
+                total=total_files,
+                message=f"正在解析: {item.rel_path}"
+            )
+        # --------------------------
+        
         try:
             loader = PyPDFLoader(str(item.abs_path))
             file_docs = loader.load()
@@ -143,15 +188,31 @@ def load_pdf_documents_from_files(
         raise RuntimeError("未读取到任何 PDF 内容，请检查 Zotero storage 路径是否正确。")
     return docs
 
+# yzx update for PO
+# def load_pdf_documents(zotero_path: str, attachment_metadata: dict[str, dict] | None = None) -> list[Document]:
+#     print(f"🟡 正在扫描目录: {zotero_path}")
+#     print("⏳ 正在读取 PDF 文件，请稍候...")
+#     pdf_files = scan_pdf_files(zotero_path)
+#     docs = load_pdf_documents_from_files(pdf_files, attachment_metadata=attachment_metadata)
+#     print(f"✅ PDF 读取完毕！共提取了 {len(docs)} 页文献内容。")
+#     return docs
 
-def load_pdf_documents(zotero_path: str, attachment_metadata: dict[str, dict] | None = None) -> list[Document]:
+def load_pdf_documents(
+    zotero_path: str, 
+    attachment_metadata: dict[str, dict] | None = None,
+    progress_callback: Any = None  # [新增] 接收回调
+) -> list[Document]:
     print(f"🟡 正在扫描目录: {zotero_path}")
     print("⏳ 正在读取 PDF 文件，请稍候...")
     pdf_files = scan_pdf_files(zotero_path)
-    docs = load_pdf_documents_from_files(pdf_files, attachment_metadata=attachment_metadata)
+    # [修改] 将回调传给下游
+    docs = load_pdf_documents_from_files(
+        pdf_files, 
+        attachment_metadata=attachment_metadata, 
+        progress_callback=progress_callback
+    )
     print(f"✅ PDF 读取完毕！共提取了 {len(docs)} 页文献内容。")
     return docs
-
 
 def _paragraph_records_from_docs(docs: list[Document]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
@@ -340,9 +401,22 @@ def load_or_create_splits(config: AppConfig) -> list[Document]:
             return splits
         print("♻️ 检测到旧版切块缓存，正在按新策略重建...")
 
-    docs = load_pdf_documents(config.zotero_path, attachment_metadata=attachment_metadata)
+
+    # yzx update for PO [新增] 安全地从 config 中获取 callback
+    callback = getattr(config, 'progress_callback', None)
+
+    # [修改] 将回调传给下游
+    docs = load_pdf_documents(
+        config.zotero_path, 
+        attachment_metadata=attachment_metadata,
+        progress_callback=callback
+    )
     splits = split_documents(docs, config.chunk_size, config.chunk_overlap)
     splits = enrich_split_metadata(splits, attachment_metadata=attachment_metadata)
+    
+    # docs = load_pdf_documents(config.zotero_path, attachment_metadata=attachment_metadata)
+    # splits = split_documents(docs, config.chunk_size, config.chunk_overlap)
+    # splits = enrich_split_metadata(splits, attachment_metadata=attachment_metadata)
     print("💾 正在保存文本块缓存...")
     with open(config.splits_cache_path, "wb") as f:
         pickle.dump(splits, f)
