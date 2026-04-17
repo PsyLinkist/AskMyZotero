@@ -331,8 +331,33 @@ body {
         <button class="test-btn" onclick="testApiConnection()">测试连接</button>
       </div>
     </div>
-
   </div>
+
+  <div class="config-section">
+    <div class="section-title">索引管理</div>
+    <div class="form-group">
+      <label class="form-label">全库索引重建</label>
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <button class="btn btn-secondary" id="rebuildBtn" onclick="handleRebuild()">重建全库索引</button>
+        <span id="rebuildStatusText" style="font-size: 14px; color: var(--el-text-color-secondary);">状态：空闲</span>
+      </div>
+
+      <div id="progressContainer" style="display: none; margin-top: 15px;">
+         <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
+             <span id="progressMessage" style="color: var(--el-text-color-regular);">准备中...</span>
+             <span id="progressPercent" style="font-weight: 500; color: var(--el-color-primary);">0%</span>
+         </div>
+         <div style="width: 100%; height: 8px; background-color: var(--el-border-color-lighter); border-radius: 4px; overflow: hidden;">
+             <div id="progressBar" style="width: 0%; height: 100%; background-color: var(--el-color-primary); transition: width 0.3s ease;"></div>
+         </div>
+      </div>
+
+      <div class="form-help" style="margin-top: 12px;">重建将删除旧索引，重新扫描 PDF 并生成向量。文件较多时可能需要数分钟。</div>
+      <div id="rebuildErrorMsg" style="color: var(--el-color-danger); font-size: 12px; margin-top: 8px; display: none;"></div>
+    </div>
+</div>
+
+
 </div>
 
 <script>
@@ -470,5 +495,102 @@ function testApiConnection() {
 loadConfig();
 loadServerConfig();
 </script>
+
+<script>
+  // yzx 在“连接测试”卡片下方新增一个“索引管理”区域，并实现轮询逻辑
+  
+  let rebuildPollingTimer = null;
+  
+  async function handleRebuild() {
+    if (!confirm('确定要重建全库索引吗？这会删除当前已有的向量数据并重新生成。')) return;
+  
+    const apiUrl = 'http://127.0.0.1:8000';
+    const btn = document.getElementById('rebuildBtn');
+    const statusText = document.getElementById('rebuildStatusText');
+    const errorDiv = document.getElementById('rebuildErrorMsg');
+  
+    try {
+      btn.disabled = true;
+      errorDiv.style.display = 'none';
+      
+      const response = await fetch(`${apiUrl}/api/rebuild`, { method: 'POST' });
+      const data = await response.json();
+  
+      if (data.success) {
+        startPollingRebuildStatus();
+      } else {
+        alert(data.message);
+        btn.disabled = false;
+      }
+    } catch (e) {
+      alert('请求失败：' + e.message);
+      btn.disabled = false;
+    }
+  }
+  
+  function startPollingRebuildStatus() {
+  const statusText = document.getElementById('rebuildStatusText');
+  const btn = document.getElementById('rebuildBtn');
+  const errorDiv = document.getElementById('rebuildErrorMsg');
+  const progressContainer = document.getElementById('progressContainer');
+  const progressBar = document.getElementById('progressBar');
+  const progressMessage = document.getElementById('progressMessage');
+  const progressPercent = document.getElementById('progressPercent');
+  const apiUrl = 'http://127.0.0.1:8000';
+
+  if (rebuildPollingTimer) clearInterval(rebuildPollingTimer);
+
+  rebuildPollingTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/rebuild/status`);
+      const data = await res.json();
+
+      if (data.status === 'processing') {
+        statusText.textContent = '状态：正在重建中...';
+        statusText.style.color = 'var(--el-color-primary)';
+        btn.disabled = true;
+        progressContainer.style.display = 'block'; // 显示进度条
+
+        // 更新进度条 UI
+        if (data.progress) {
+            const percent = data.progress.percent || 0;
+            progressBar.style.width = percent + '%';
+            progressPercent.textContent = percent + '%';
+            progressMessage.textContent = data.progress.message || '处理中...';
+
+            // 如果遇到长文件名，可以加个 title 悬浮显示完整信息
+            progressMessage.title = data.progress.message || '';
+        }
+
+      } else if (data.status === 'success') {
+        statusText.textContent = '状态：重建成功 ✅';
+        statusText.style.color = 'var(--el-color-success)';
+        btn.disabled = false;
+        clearInterval(rebuildPollingTimer);
+
+        // 进度条拉满
+        progressBar.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressMessage.textContent = '全部完成！';
+
+        setTimeout(() => { alert('索引重建已完成！'); }, 500);
+
+      } else if (data.status === 'failed') {
+        statusText.textContent = '状态：重建失败 ❌';
+        statusText.style.color = 'var(--el-color-danger)';
+        errorDiv.textContent = '错误详情：' + data.error;
+        errorDiv.style.display = 'block';
+        btn.disabled = false;
+        clearInterval(rebuildPollingTimer);
+        progressMessage.textContent = '重建终止';
+        progressBar.style.backgroundColor = 'var(--el-color-danger)'; // 变红
+      }
+    } catch (e) {
+      console.error('轮询失败', e);
+    }
+  }, 1000); // 可以稍微加快轮询频率，比如 1 秒一次，让进度看起来更流畅
+}
+</script>
+
 </body>
 </html>
