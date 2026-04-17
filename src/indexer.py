@@ -1,4 +1,4 @@
-﻿"""本文件负责构建、加载和使用向量索引，以及组装 RAG 问答链。"""
+"""本文件负责构建、加载和使用向量索引，以及组装 RAG 问答链。"""
 
 import shutil
 from pathlib import Path
@@ -59,6 +59,33 @@ def ensure_rebuild_if_needed(config: AppConfig) -> None:
         remove_path_if_exists(config.splits_cache_path)
         print("✅ 旧索引与旧缓存已删除。")
 
+# yzx update for PO
+# def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
+#     """根据文本块构建并保存 FAISS 向量库。"""
+#     print("☁️ 正在调用嵌入模型生成向量并构建 FAISS 索引...")
+#     embeddings = build_embeddings(config)
+
+#     batch_size = 64
+#     vectorstore = None
+
+#     for i in tqdm(range(0, len(splits), batch_size), desc="🚀 向量化进度"):
+#         batch = splits[i: i + batch_size]
+#         print(
+#             f"   … 嵌入批次 {i // batch_size + 1}，本批 {len(batch)} 条（等待 API 返回中，无反应时请检查网络与 base_url）",
+#             flush=True,
+#         )
+#         if vectorstore is None:
+#             vectorstore = FAISS.from_documents(batch, embeddings)
+#         else:
+#             vectorstore.add_documents(batch)
+
+#     if vectorstore is None:
+#         raise RuntimeError("向量库构建失败，未生成任何向量。")
+
+#     remove_path_if_exists(config.db_save_path)
+#     vectorstore.save_local(str(config.db_save_path))
+#     print(f"🎉 向量数据库构建并保存完成: {config.db_save_path}")
+#     return vectorstore
 
 def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
     """根据文本块构建并保存 FAISS 向量库。"""
@@ -67,11 +94,28 @@ def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
 
     batch_size = 64
     vectorstore = None
+    
+    # [新增] 计算总批次，用于计算进度百分比
+    total_batches = (len(splits) + batch_size - 1) // batch_size
 
     for i in tqdm(range(0, len(splits), batch_size), desc="🚀 向量化进度"):
         batch = splits[i: i + batch_size]
+        current_batch = i // batch_size + 1
+        
+        # --- [新增] 触发进度回调 ---
+        # 安全地从 config 中尝试获取进度回调函数
+        callback = getattr(config, 'progress_callback', None)
+        if callback:
+            callback(
+                stage="embedding",
+                current=current_batch,
+                total=total_batches,
+                message=f"正在生成向量 (批次 {current_batch}/{total_batches})"
+            )
+        # --------------------------
+
         print(
-            f"   … 嵌入批次 {i // batch_size + 1}，本批 {len(batch)} 条（等待 API 返回中，无反应时请检查网络与 base_url）",
+            f"   … 嵌入批次 {current_batch}，本批 {len(batch)} 条（等待 API 返回中，无反应时请检查网络与 base_url）",
             flush=True,
         )
         if vectorstore is None:
@@ -86,7 +130,6 @@ def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
     vectorstore.save_local(str(config.db_save_path))
     print(f"🎉 向量数据库构建并保存完成: {config.db_save_path}")
     return vectorstore
-
 
 def get_vectorstore(config: AppConfig) -> FAISS:
     """优先加载本地索引，不存在时重新构建。"""
