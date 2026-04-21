@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>文献助手 · Zotero RAG</title>
+<title>AskMyZotero</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -102,6 +102,110 @@ body {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+}
+
+.filters-sidebar {
+  width: 300px;
+  background-color: var(--el-bg-color-sidebar);
+  border-right: 1px solid var(--el-border-color);
+  padding: 24px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.filters-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--el-text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.filter-group {
+  margin-bottom: 20px;
+}
+
+.filter-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-primary);
+  margin-bottom: 8px;
+}
+
+.filter-control,
+.filter-range input {
+  width: 100%;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--el-text-primary);
+  background-color: var(--el-bg-color-page);
+  font-family: var(--font-family);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.filter-control:focus,
+.filter-range input:focus {
+  outline: none;
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light);
+}
+
+.filter-control:disabled {
+  color: var(--el-text-placeholder);
+  background-color: #f9fafb;
+  cursor: not-allowed;
+}
+
+.filter-range {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.filter-clear-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.inline-syntax {
+  border-top: 1px solid var(--el-border-color);
+  padding-top: 18px;
+  margin-top: 24px;
+}
+
+.inline-syntax-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-secondary);
+  margin-bottom: 10px;
+}
+
+.syntax-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.syntax-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: #f3f4f6;
+  color: var(--el-text-secondary);
+  font-size: 13px;
 }
 
 /* Chat Area */
@@ -482,13 +586,25 @@ body {
   display: inline-block;
   vertical-align: bottom;
 }
+@media (max-width: 1180px) {
+  .filters-sidebar,
+  .sidebar {
+    display: none;
+  }
+
+  .chat-history,
+  .input-area {
+    padding-left: 8%;
+    padding-right: 8%;
+  }
+}
 </style>
 </head>
 <body>
 
 <div class="app-header">
   <div>
-    <div class="header-title">文献助手 · Zotero RAG</div>
+    <div class="header-title">AskMyZotero</div>
     <div class="header-title-sub">基于大语言模型与本地文献库的智能问答</div>
   </div>
   <button class="el-button" onclick="window.location.href='settings.html?returnTo=main'">
@@ -500,6 +616,57 @@ body {
 <div class="notice-box" id="configNotice"></div>
 
 <div class="app-main">
+  <aside class="filters-sidebar">
+    <div class="filters-title">Filters</div>
+
+    <div class="filter-group">
+      <label class="filter-label">Date range</label>
+      <div class="filter-range">
+        <input id="yearFromFilter" type="number" inputmode="numeric" placeholder="From (YYYY)">
+        <input id="yearToFilter" type="number" inputmode="numeric" placeholder="To (YYYY)">
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="authorFilter">Author</label>
+      <input id="authorFilter" class="filter-control" type="text" placeholder="e.g. Volcker">
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="tagFilter">Tag</label>
+      <input id="tagFilter" class="filter-control" type="text" placeholder="e.g. monetary-policy">
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="collectionFilter">Collection</label>
+      <input id="collectionFilter" class="filter-control" type="text" placeholder="e.g. DTRP">
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="resultsFilter">Results</label>
+      <select id="resultsFilter" class="filter-control">
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="30">30</option>
+      </select>
+    </div>
+
+    <div class="filter-actions">
+      <button class="el-button filter-clear-btn" type="button" onclick="clearAllFilters()">Clear all filters</button>
+    </div>
+
+    <div class="inline-syntax">
+      <div class="inline-syntax-title">Inline syntax</div>
+      <div class="syntax-chip-row">
+        <span class="syntax-chip">type:hearing</span>
+        <span class="syntax-chip">by:Volcker</span>
+        <span class="syntax-chip">in:DTRP</span>
+        <span class="syntax-chip">tag:mmf</span>
+      </div>
+    </div>
+  </aside>
+
   <div class="chat-container">
     <div class="chat-history" id="chatArea">
       <div class="message-row ai">
@@ -549,6 +716,12 @@ function escapeHtml(s) {
 }
 const queryInput = document.getElementById('queryInput');
 const sendBtn = document.getElementById('sendBtn');
+const yearFromFilter = document.getElementById('yearFromFilter');
+const yearToFilter = document.getElementById('yearToFilter');
+const authorFilter = document.getElementById('authorFilter');
+const tagFilter = document.getElementById('tagFilter');
+const collectionFilter = document.getElementById('collectionFilter');
+const resultsFilter = document.getElementById('resultsFilter');
 
 // —————————— 打字机速度配置（直接改这里！单位：毫秒）——————————
 const TYPE_SPEED = 5; // 越小越快，建议 10~50
@@ -568,6 +741,41 @@ queryInput.addEventListener('input', function() { autoResize(this); });
 queryInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearch(); }
 });
+
+function splitFilterInput(value) {
+  return String(value || '')
+    .split(/[,\n，;]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function collectHardFilters() {
+  const filters = {};
+  const authors = splitFilterInput(authorFilter.value);
+  const tags = splitFilterInput(tagFilter.value);
+  const collections = splitFilterInput(collectionFilter.value);
+  const yearFrom = yearFromFilter.value.trim();
+  const yearTo = yearToFilter.value.trim();
+
+  if (authors.length) filters.authors = authors;
+  if (tags.length) filters.tags = tags;
+  if (collections.length) filters.collections = collections;
+  if (yearFrom || yearTo) {
+    filters.date_range = {};
+    if (yearFrom) filters.date_range.from = Number(yearFrom);
+    if (yearTo) filters.date_range.to = Number(yearTo);
+  }
+  return filters;
+}
+
+function clearAllFilters() {
+  yearFromFilter.value = '';
+  yearToFilter.value = '';
+  authorFilter.value = '';
+  tagFilter.value = '';
+  collectionFilter.value = '';
+  resultsFilter.value = '20';
+}
 
 // 格式化文本（加粗、引用、换行）
 function formatAnswerText(text) {
@@ -754,6 +962,8 @@ async function openLocalFile(filePath) {
 async function runSearch() {
   const query = queryInput.value.trim();
   if (!query) return;
+  const hardFilters = collectHardFilters();
+  const topK = Number(resultsFilter.value || 20);
 
   appendUserMessage(query);
   const msgId = 'msg-' + Date.now();
@@ -772,7 +982,7 @@ async function runSearch() {
     const response = await fetch(`${apiBaseUrl}/api/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query, top_k: 4 })
+      body: JSON.stringify({ query: query, top_k: topK, filters: hardFilters })
     });
     const data = await response.json();
 

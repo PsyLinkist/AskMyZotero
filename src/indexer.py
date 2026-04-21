@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 from src.config import AppConfig
+from src.metadata_store import rebuild_metadata_store
 from src.parser import load_or_create_splits
 
 
@@ -57,6 +58,7 @@ def ensure_rebuild_if_needed(config: AppConfig) -> None:
         print("🗑️ 检测到 --rebuild，正在删除旧索引与旧缓存...")
         remove_path_if_exists(config.db_save_path)
         remove_path_if_exists(config.splits_cache_path)
+        remove_path_if_exists(config.metadata_db_path)
         print("✅ 旧索引与旧缓存已删除。")
 
 # yzx update for PO
@@ -135,17 +137,20 @@ def get_vectorstore(config: AppConfig) -> FAISS:
     """优先加载本地索引，不存在时重新构建。"""
     ensure_rebuild_if_needed(config)
     embeddings = build_embeddings(config)
+    splits = load_or_create_splits(config)
 
     if config.db_save_path.exists():
         print(f"🟢 正在加载已存在的向量数据库: {config.db_save_path}")
-        return FAISS.load_local(
+        vectorstore = FAISS.load_local(
             str(config.db_save_path),
             embeddings,
             allow_dangerous_deserialization=True,
         )
+    else:
+        vectorstore = build_vectorstore_from_splits(config, splits)
 
-    splits = load_or_create_splits(config)
-    return build_vectorstore_from_splits(config, splits)
+    rebuild_metadata_store(config.metadata_db_path, splits, vectorstore=vectorstore)
+    return vectorstore
 
 
 def create_chat_chain(config: AppConfig, vectorstore: FAISS):

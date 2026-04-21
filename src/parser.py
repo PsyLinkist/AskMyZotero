@@ -176,6 +176,8 @@ def load_pdf_documents_from_files(
                     doc.metadata["paper_id"] = meta.get("paper_id")
                     doc.metadata["paper_title"] = meta.get("paper_title")
                     doc.metadata["authors"] = meta.get("authors")
+                    doc.metadata["tags"] = meta.get("tags")
+                    doc.metadata["collections"] = meta.get("collections")
                     doc.metadata["year"] = meta.get("year")
                     doc.metadata["venue"] = meta.get("venue")
                     doc.metadata["doi"] = meta.get("doi")
@@ -338,6 +340,8 @@ def enrich_split_metadata(splits: list[Document], attachment_metadata: dict[str,
         metadata["paper_id"] = (zotero_meta or {}).get("paper_id") or metadata.get("paper_id") or rel_path
         metadata["paper_title"] = (zotero_meta or {}).get("paper_title") or metadata.get("paper_title") or paper_title
         metadata["authors"] = (zotero_meta or {}).get("authors") or metadata.get("authors")
+        metadata["tags"] = (zotero_meta or {}).get("tags") or metadata.get("tags")
+        metadata["collections"] = (zotero_meta or {}).get("collections") or metadata.get("collections")
         metadata["year"] = (zotero_meta or {}).get("year") or metadata.get("year")
         metadata["venue"] = (zotero_meta or {}).get("venue") or metadata.get("venue")
         metadata["doi"] = (zotero_meta or {}).get("doi") or metadata.get("doi")

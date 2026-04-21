@@ -234,7 +234,7 @@ async def ask_endpoint(request: QueryRequest):
         )
 
     try:
-        result = agent.handle_query(request.query, request.top_k)
+        result = agent.handle_query(request.query, request.top_k, request.filters)
 
         if not result["success"]:
             return QueryResponse(

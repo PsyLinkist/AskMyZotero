@@ -73,6 +73,52 @@ def _normalize_title(value: Any) -> str:
     return text.strip()
 
 
+def _build_collection_path(
+    collection_id: int,
+    collections_by_id: dict[int, dict[str, Any]],
+    path_cache: dict[int, str],
+) -> str:
+    if collection_id in path_cache:
+        return path_cache[collection_id]
+
+    current = collections_by_id.get(collection_id) or {}
+    name = str(current.get("name") or "").strip()
+    parent_id = current.get("parent_id")
+    if not name:
+        path_cache[collection_id] = ""
+        return ""
+
+    if parent_id is None or parent_id == collection_id:
+        path_cache[collection_id] = name
+        return name
+
+    parent_path = _build_collection_path(int(parent_id), collections_by_id, path_cache)
+    full_path = f"{parent_path}/{name}" if parent_path else name
+    path_cache[collection_id] = full_path
+    return full_path
+
+
+def _expand_collection_aliases(collection_path: str) -> list[str]:
+    path = str(collection_path or "").strip().strip("/")
+    if not path:
+        return []
+
+    parts = [part.strip() for part in path.split("/") if part.strip()]
+    aliases: list[str] = []
+
+    if path not in aliases:
+        aliases.append(path)
+
+    for index in range(len(parts)):
+        prefix = "/".join(parts[: index + 1])
+        suffix = "/".join(parts[index:])
+        leaf = parts[index]
+        for candidate in (prefix, suffix, leaf):
+            if candidate and candidate not in aliases:
+                aliases.append(candidate)
+    return aliases
+
+
 def load_attachment_metadata(storage_path: Path) -> dict[str, dict[str, Any]]:
     db_path = _pick_zotero_db(storage_path)
     if db_path is None:
@@ -139,6 +185,59 @@ def load_attachment_metadata(storage_path: Path) -> dict[str, dict[str, Any]]:
         if name:
             creators_by_item.setdefault(row["itemID"], []).append(name)
 
+    cur.execute(
+        """
+        SELECT
+            it.itemID,
+            t.name
+        FROM itemTags it
+        JOIN tags t ON t.tagID = it.tagID
+        ORDER BY it.itemID, t.name
+        """
+    )
+    tags_by_item: dict[int, list[str]] = {}
+    for row in cur.fetchall():
+        tag_name = str(row["name"] or "").strip()
+        if tag_name:
+            tags_by_item.setdefault(row["itemID"], []).append(tag_name)
+
+    cur.execute(
+        """
+        SELECT
+            collectionID,
+            parentCollectionID,
+            collectionName
+        FROM collections
+        """
+    )
+    collections_by_id: dict[int, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        collections_by_id[int(row["collectionID"])] = {
+            "parent_id": row["parentCollectionID"],
+            "name": str(row["collectionName"] or "").strip(),
+        }
+    collection_path_cache: dict[int, str] = {}
+
+    cur.execute(
+        """
+        SELECT
+            ci.itemID,
+            ci.collectionID
+        FROM collectionItems ci
+        ORDER BY ci.itemID, ci.collectionID
+        """
+    )
+    collections_by_item: dict[int, list[str]] = {}
+    for row in cur.fetchall():
+        collection_id = row["collectionID"]
+        if collection_id is None:
+            continue
+        collection_path = _build_collection_path(int(collection_id), collections_by_id, collection_path_cache)
+        for alias in _expand_collection_aliases(collection_path):
+            bucket = collections_by_item.setdefault(row["itemID"], [])
+            if alias not in bucket:
+                bucket.append(alias)
+
     metadata_by_attachment: dict[str, dict[str, Any]] = {}
     for row in attachment_rows:
         attachment_key = row["attachment_key"]
@@ -168,6 +267,8 @@ def load_attachment_metadata(storage_path: Path) -> dict[str, dict[str, Any]]:
             "parent_item_key": parent_key,
             "paper_title": title,
             "authors": creators_by_item.get(parent_item_id or -1),
+            "tags": tags_by_item.get(parent_item_id or -1),
+            "collections": collections_by_item.get(parent_item_id or -1),
             "year": year,
             "venue": venue,
             "doi": doi,

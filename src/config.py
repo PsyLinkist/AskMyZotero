@@ -23,6 +23,7 @@ class AppConfig:
     db_save_path: Path
     splits_cache_path: Path
     manifest_path: Path
+    metadata_db_path: Path
 
     api_key: str
     base_url: Optional[str]
@@ -136,6 +137,7 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         "db_save_path": index_root / "faiss_index",
         "splits_cache_path": index_root / "zotero_splits_cache.pkl",
         "manifest_path": index_root / "manifest.json",
+        "metadata_db_path": index_root / "metadata.db",
         "api_key": api_key,
         "base_url": base_url,
         "chat_model": yaml_config.get("chat_model") or args.chat_model,
@@ -170,6 +172,7 @@ def print_config_summary(config: AppConfig) -> None:
     print(f"索引目录           : {config.db_save_path}")
     print(f"切块缓存           : {config.splits_cache_path}")
     print(f"Manifest 路径      : {config.manifest_path}")
+    print(f"Metadata DB       : {config.metadata_db_path}")
     print(f"chunk_size         : {config.chunk_size}")
     print(f"chunk_overlap      : {config.chunk_overlap}")
     print(f"top_k              : {config.top_k}")

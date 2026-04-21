@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+import faiss
+import numpy as np
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -15,6 +17,7 @@ from src.config import AppConfig
 from src.domain_models import QueryBundle
 from src.indexer import build_llm, get_vectorstore
 from src.manifest import prepare_manifest_snapshot
+from src.metadata_store import MetadataStore
 from src.prompt_logger import save_prompt_log
 
 
@@ -51,6 +54,87 @@ def _uses_paper_list_answer(intent: str) -> bool:
 VALID_INTENTS = {"fact_qa", "comparison", "definition", "survey", "paper_lookup"}
 
 
+def _normalize_filter_text_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = re.split(r"[,，;\n]+", value)
+        return [part.strip() for part in parts if part.strip()]
+    if isinstance(value, (list, tuple, set)):
+        normalized: list[str] = []
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                normalized.append(text)
+        return normalized
+    return []
+
+
+def _normalize_year_filter(raw_filters: dict[str, Any]) -> dict[str, int] | None:
+    date_range = raw_filters.get("date_range")
+    if not isinstance(date_range, dict):
+        return None
+    normalized: dict[str, int] = {}
+    for key in ("from", "to"):
+        value = date_range.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            normalized[key] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return normalized or None
+
+
+def _normalize_filters(raw_filters: dict[str, Any] | None) -> dict[str, Any]:
+    base = raw_filters if isinstance(raw_filters, dict) else {}
+    normalized: dict[str, Any] = {}
+    collections = _normalize_filter_text_list(base.get("collections"))
+    tags = _normalize_filter_text_list(base.get("tags"))
+    authors = _normalize_filter_text_list(base.get("authors"))
+    if collections:
+        normalized["collections"] = collections
+    if tags:
+        normalized["tags"] = tags
+    if authors:
+        normalized["authors"] = authors
+    year_range = _normalize_year_filter(base)
+    if year_range:
+        normalized["date_range"] = year_range
+    return normalized
+
+
+def _contains_any_text(candidates: Any, expected_values: list[str]) -> bool:
+    if not expected_values:
+        return True
+    if isinstance(candidates, str):
+        candidate_list = [candidates]
+    elif isinstance(candidates, (list, tuple, set)):
+        candidate_list = [str(item or "") for item in candidates]
+    else:
+        candidate_list = []
+    lowered_candidates = [item.strip().lower() for item in candidate_list if str(item or "").strip()]
+    lowered_expected = [item.strip().lower() for item in expected_values if item.strip()]
+    if not lowered_candidates:
+        return False
+    return any(expected in candidate for expected in lowered_expected for candidate in lowered_candidates)
+
+
+def _normalize_text_values(values: Any) -> list[str]:
+    if isinstance(values, str):
+        items = [values]
+    elif isinstance(values, (list, tuple, set)):
+        items = [str(item or "") for item in values]
+    else:
+        items = []
+    normalized: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
 INTENT_PATTERNS = [
     ("comparison", ("区别", "差异", "对比", "compare", "versus", "vs")),
     ("definition", ("什么是", "是什么", "定义", "meaning of", "what is")),
@@ -68,15 +152,17 @@ class ZoteroAgent:
         self.config = config
         prepare_manifest_snapshot(self.config)
         self.vectorstore = get_vectorstore(self.config)
+        self.metadata_store = MetadataStore(self.config.metadata_db_path)
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.config.top_k})
         self.llm = build_llm(self.config)
         self._last_llm_debug: dict[str, Any] = {}
 
-    def parse_query(self, query: str) -> QueryBundle:
+    def parse_query(self, query: str, filters: dict[str, Any] | None = None) -> QueryBundle:
         clean_query = " ".join(query.split())
         entities = self._extract_entities(clean_query)
         keywords = self._extract_keywords(clean_query)
         self._last_llm_debug = {"query": clean_query}
+        normalized_filters = _normalize_filters(filters)
 
         intent, confidence = self._classify_intent(clean_query)
 
@@ -88,7 +174,7 @@ class ZoteroAgent:
             entities=entities,
             keywords=keywords,
             rewritten_queries=rewritten_queries,
-            filters={},
+            filters=normalized_filters,
             search_plan={
                 "use_dense": True,
                 "retrieve_mode": "paper_lookup" if intent == "paper_lookup" else "knowledge_qa",
@@ -182,9 +268,9 @@ class ZoteroAgent:
         }
         return intent, confidence
 
-    def handle_query(self, query: str, top_k: int | None = None) -> Dict[str, Any]:
+    def handle_query(self, query: str, top_k: int | None = None, filters: dict[str, Any] | None = None) -> Dict[str, Any]:
         try:
-            query_bundle = self.parse_query(query)
+            query_bundle = self.parse_query(query, filters=filters)
             effective_top_k = top_k if isinstance(top_k, int) and top_k > 0 else self.config.top_k
             docs = self._retrieve_docs(query_bundle, effective_top_k)
 
@@ -202,6 +288,7 @@ class ZoteroAgent:
                     debug={
                         "intent_confidence": query_bundle.intent_confidence,
                         "rewritten_queries": query_bundle.rewritten_queries,
+                        "hard_filters": query_bundle.filters,
                         "section_weights": resolve_section_weights(query_bundle.intent),
                         "llm": self._last_llm_debug,
                     },
@@ -254,19 +341,51 @@ class ZoteroAgent:
                     **payload.debug,
                     "rewritten_queries": query_bundle.rewritten_queries,
                     "intent_confidence": query_bundle.intent_confidence,
+                    "hard_filters": query_bundle.filters,
                 },
             )
         return self._synthesize_direct_answer(query_bundle, chunks)
 
     def _retrieve_docs(self, query_bundle: QueryBundle, top_k: int) -> list[Any]:
+        total_index_docs = self._estimate_vectorstore_doc_count()
+        candidate_scope = self.metadata_store.resolve_candidate_scope(query_bundle.filters)
+        candidate_row_ids = candidate_scope["faiss_row_ids"] if query_bundle.filters else None
         if _uses_paper_list_answer(query_bundle.intent):
             retrieve_k = max(top_k * 4, 12)
         else:
             retrieve_k = max(top_k, 6)
+        if query_bundle.filters:
+            retrieve_k = min(max(retrieve_k, 12), max(1, candidate_scope["chunk_count"]))
         seen_chunk_ids: set[str] = set()
         merged_docs: list[Any] = []
+        diagnostics: dict[str, Any] = {
+            "hard_filters": query_bundle.filters,
+            "candidate_source": candidate_scope["candidate_source"],
+            "candidate_paper_count": candidate_scope["paper_count"],
+            "candidate_chunk_count": candidate_scope["chunk_count"],
+            "retrieve_k": retrieve_k,
+            "total_index_docs": total_index_docs,
+            "rewritten_queries": query_bundle.rewritten_queries[:3],
+            "per_query": [],
+            "total_raw_hits": 0,
+            "total_kept_hits": 0,
+            "rejection_counts": {
+                "deduplicated": 0,
+            },
+        }
+        if query_bundle.filters and not candidate_row_ids:
+            diagnostics["final_ranked_hits"] = 0
+            self._last_llm_debug["hard_filter_diagnostics"] = diagnostics
+            self._log_hard_filter_diagnostics(query_bundle.raw_query, diagnostics)
+            return []
         for rewritten_query in query_bundle.rewritten_queries[:3]:
-            docs = self.vectorstore.similarity_search_with_score(rewritten_query, k=retrieve_k)
+            if candidate_row_ids is None:
+                docs = self.vectorstore.similarity_search_with_score(rewritten_query, k=retrieve_k)
+                search_scope = "fullindex"
+            else:
+                docs = self._similarity_search_with_score_in_subset(rewritten_query, candidate_row_ids, retrieve_k)
+                search_scope = "subindex"
+            diagnostics["total_raw_hits"] += len(docs)
             scored_docs: list[tuple[Any, float]] = []
             for doc, score in docs:
                 metadata = dict(doc.metadata or {})
@@ -274,19 +393,163 @@ class ZoteroAgent:
                 metadata["score"] = _to_relevance_score(score)
                 doc.metadata = metadata
                 scored_docs.append((doc, float(metadata["score"])))
+            per_query_stats = {
+                "query": rewritten_query,
+                "search_scope": search_scope,
+                "raw_hits": len(docs),
+                "kept_hits": 0,
+                "rejected": {
+                    "deduplicated": 0,
+                },
+            }
             scored_docs.sort(key=lambda item: item[1], reverse=True)
             for doc, _ in scored_docs:
                 metadata = dict(doc.metadata or {})
-                chunk_id = str(metadata.get("chunk_id") or f"{metadata.get('source')}::{metadata.get('page')}::{len(merged_docs)}")
+                chunk_id = str(metadata.get("chunk_id") or "").strip()
+                if not chunk_id:
+                    chunk_id = f"{metadata.get('source')}::{metadata.get('page')}::{len(merged_docs)}"
                 if chunk_id in seen_chunk_ids:
+                    diagnostics["rejection_counts"]["deduplicated"] += 1
+                    per_query_stats["rejected"]["deduplicated"] += 1
                     continue
                 seen_chunk_ids.add(chunk_id)
                 merged_docs.append(doc)
+                diagnostics["total_kept_hits"] += 1
+                per_query_stats["kept_hits"] += 1
+            diagnostics["per_query"].append(per_query_stats)
         merged_docs.sort(
             key=lambda doc: float((doc.metadata or {}).get("score", 0.0)),
             reverse=True,
         )
+        diagnostics["final_ranked_hits"] = len(merged_docs)
+        self._last_llm_debug["hard_filter_diagnostics"] = diagnostics
+        self._log_hard_filter_diagnostics(query_bundle.raw_query, diagnostics)
         return merged_docs
+
+    def _estimate_vectorstore_doc_count(self) -> int:
+        mapping = getattr(self.vectorstore, "index_to_docstore_id", None)
+        if isinstance(mapping, dict):
+            return len(mapping)
+        if isinstance(mapping, list):
+            return len(mapping)
+        return 0
+
+    def _similarity_search_with_score_in_subset(
+        self,
+        query: str,
+        candidate_row_ids: list[int],
+        k: int,
+    ) -> list[tuple[Any, float]]:
+        if not candidate_row_ids:
+            return []
+
+        query_vector = np.asarray(self._embed_query(query), dtype="float32")
+        row_ids = [int(row_id) for row_id in candidate_row_ids]
+        sub_vectors: list[np.ndarray] = []
+        valid_row_ids: list[int] = []
+        for row_id in row_ids:
+            try:
+                vector = np.asarray(self.vectorstore.index.reconstruct(int(row_id)), dtype="float32")
+            except Exception:
+                continue
+            if vector.ndim != 1:
+                vector = vector.reshape(-1)
+            sub_vectors.append(vector)
+            valid_row_ids.append(int(row_id))
+
+        if not valid_row_ids:
+            return []
+
+        matrix = np.vstack(sub_vectors).astype("float32")
+        dim = int(matrix.shape[1])
+        metric_type = getattr(self.vectorstore.index, "metric_type", faiss.METRIC_L2)
+        if metric_type == faiss.METRIC_INNER_PRODUCT:
+            sub_index = faiss.IndexFlatIP(dim)
+        else:
+            sub_index = faiss.IndexFlatL2(dim)
+        sub_index.add(matrix)
+
+        limit = min(max(int(k), 1), len(valid_row_ids))
+        distances, indices = sub_index.search(query_vector.reshape(1, -1), limit)
+
+        results: list[tuple[Any, float]] = []
+        for local_idx, distance in zip(indices[0], distances[0]):
+            if int(local_idx) < 0:
+                continue
+            row_id = valid_row_ids[int(local_idx)]
+            doc = self._get_doc_by_row_id(row_id)
+            if doc is None:
+                continue
+            results.append((doc, float(distance)))
+        return results
+
+    def _embed_query(self, query: str) -> list[float]:
+        embedding_function = getattr(self.vectorstore, "embedding_function", None)
+        if embedding_function is not None:
+            if hasattr(embedding_function, "embed_query"):
+                return list(embedding_function.embed_query(query))
+            if callable(embedding_function):
+                return list(embedding_function(query))
+        embeddings = getattr(self.vectorstore, "embeddings", None)
+        if embeddings is not None and hasattr(embeddings, "embed_query"):
+            return list(embeddings.embed_query(query))
+        raise RuntimeError("Vectorstore embedding function is unavailable.")
+
+    def _get_doc_by_row_id(self, row_id: int) -> Any | None:
+        mapping = getattr(self.vectorstore, "index_to_docstore_id", None)
+        docstore = getattr(self.vectorstore, "docstore", None)
+        if mapping is None or docstore is None:
+            return None
+
+        if isinstance(mapping, dict):
+            docstore_id = mapping.get(int(row_id))
+        elif isinstance(mapping, list):
+            if int(row_id) < 0 or int(row_id) >= len(mapping):
+                return None
+            docstore_id = mapping[int(row_id)]
+        else:
+            return None
+        if docstore_id is None:
+            return None
+        internal_dict = getattr(docstore, "_dict", None)
+        if isinstance(internal_dict, dict):
+            return internal_dict.get(docstore_id)
+        search_fn = getattr(docstore, "search", None)
+        if callable(search_fn):
+            try:
+                return search_fn(docstore_id)
+            except Exception:
+                return None
+        return None
+
+    def _log_hard_filter_diagnostics(self, raw_query: str, diagnostics: dict[str, Any]) -> None:
+        hard_filters = diagnostics.get("hard_filters") or {}
+        if hard_filters:
+            print(
+                "[HardFilter] "
+                f"query={raw_query!r} "
+                f"filters={hard_filters} "
+                f"candidate_source={diagnostics.get('candidate_source')} "
+                f"candidate_papers={diagnostics.get('candidate_paper_count', 0)} "
+                f"candidate_chunks={diagnostics.get('candidate_chunk_count', 0)} "
+                f"total_index_docs={diagnostics.get('total_index_docs', 0)} "
+                f"raw_hits={diagnostics.get('total_raw_hits', 0)} "
+                f"kept_hits={diagnostics.get('total_kept_hits', 0)} "
+                f"final_hits={diagnostics.get('final_ranked_hits', 0)}"
+            )
+            print(
+                "[HardFilter] "
+                f"rejections={diagnostics.get('rejection_counts', {})}"
+            )
+        else:
+            print(
+                "[HardFilter] "
+                f"query={raw_query!r} filters=<none> "
+                f"candidate_source={diagnostics.get('candidate_source')} "
+                f"total_index_docs={diagnostics.get('total_index_docs', 0)} "
+                f"raw_hits={diagnostics.get('total_raw_hits', 0)} "
+                f"final_hits={diagnostics.get('final_ranked_hits', 0)}"
+            )
 
     def _extract_entities(self, query: str) -> list[str]:
         entities: list[str] = []
@@ -421,6 +684,7 @@ class ZoteroAgent:
                     "retrieved_chunk_count": len(chunks),
                     "used_evidence_count": len(evidence_chunks),
                     "section_weights": section_weights,
+                    "hard_filters": query_bundle.filters,
                 },
             )
         except Exception:
@@ -440,6 +704,7 @@ class ZoteroAgent:
                     "retrieved_chunk_count": len(chunks),
                     "used_evidence_count": len(evidence_chunks),
                     "section_weights": section_weights,
+                    "hard_filters": query_bundle.filters,
                 },
             )
 
@@ -519,6 +784,8 @@ class ZoteroAgent:
                 "paper_title": title,
                 "title": title,
                 "authors": metadata.get("authors"),
+                "tags": metadata.get("tags"),
+                "collections": metadata.get("collections"),
                 "year": metadata.get("year"),
                 "venue": metadata.get("venue"),
                 "source": source_path,
