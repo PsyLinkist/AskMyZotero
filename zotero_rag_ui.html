@@ -634,12 +634,12 @@ body {
 
     <div class="filter-group">
       <label class="filter-label" for="tagFilter">Tag</label>
-      <input id="tagFilter" class="filter-control" type="text" placeholder="e.g. monetary-policy">
+      <input id="tagFilter" class="filter-control" type="text" placeholder="e.g. retrieval, rag">
     </div>
 
     <div class="filter-group">
       <label class="filter-label" for="collectionFilter">Collection</label>
-      <input id="collectionFilter" class="filter-control" type="text" placeholder="e.g. DTRP">
+      <input id="collectionFilter" class="filter-control" type="text" placeholder="e.g. DTRP, MMF">
     </div>
 
     <div class="filter-group">
@@ -687,7 +687,7 @@ body {
         <button class="send-btn" id="sendBtn" onclick="runSearch()">Send</button>
       </div>
       
-      <div class="quick-actions">
+      <div class="quick-actions" id="quickActions">
         <button class="quick-btn" onclick="fillQuery('哪些文章使用了检索方法？')">检索方法</button>
         <button class="quick-btn" onclick="fillQuery('我读过哪些关于RAG的文献？其中有哪些是顶会的？')">RAG顶会</button>
         <button class="quick-btn" onclick="fillQuery('有没有用了投影技术的文献？')">投影技术</button>
@@ -722,6 +722,16 @@ const authorFilter = document.getElementById('authorFilter');
 const tagFilter = document.getElementById('tagFilter');
 const collectionFilter = document.getElementById('collectionFilter');
 const resultsFilter = document.getElementById('resultsFilter');
+const quickActions = document.getElementById('quickActions');
+const RECENT_SEARCHES_KEY = 'askmyzoteroRecentSearches';
+const MAX_RECENT_SEARCHES = 5;
+const DEFAULT_QUICK_QUERIES = [
+  { label: '检索方法', query: '哪些文章使用了检索方法？' },
+  { label: 'RAG顶会', query: '我读过哪些关于RAG的文献？其中有哪些是顶会的？' },
+  { label: '投影技术', query: '有没有用了投影技术的文献？' },
+  { label: '多模态', query: '2023年以后的多模态相关文献' },
+  { label: '幻觉问题', query: '有哪些文献研究了大语言模型的幻觉问题？' }
+];
 
 // —————————— 打字机速度配置（直接改这里！单位：毫秒）——————————
 const TYPE_SPEED = 5; // 越小越快，建议 10~50
@@ -737,6 +747,59 @@ function fillQuery(text) {
   autoResize(queryInput);
   queryInput.focus();
 }
+
+function getRecentSearches() {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, MAX_RECENT_SEARCHES);
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveRecentSearch(query) {
+  const normalized = String(query || '').trim();
+  if (!normalized) return;
+
+  const next = [
+    normalized,
+    ...getRecentSearches().filter(item => item !== normalized)
+  ].slice(0, MAX_RECENT_SEARCHES);
+
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+}
+
+function createQuickButton(label, query) {
+  const button = document.createElement('button');
+  button.className = 'quick-btn';
+  button.type = 'button';
+  button.textContent = label;
+  button.addEventListener('click', () => fillQuery(query));
+  return button;
+}
+
+function renderQuickActions() {
+  if (!quickActions) return;
+  quickActions.innerHTML = '';
+
+  const recentSearches = getRecentSearches();
+  if (recentSearches.length > 0) {
+    recentSearches.forEach(query => {
+      quickActions.appendChild(createQuickButton(query, query));
+    });
+    return;
+  }
+
+  DEFAULT_QUICK_QUERIES.forEach(item => {
+    quickActions.appendChild(createQuickButton(item.label, item.query));
+  });
+}
+
 queryInput.addEventListener('input', function() { autoResize(this); });
 queryInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearch(); }
@@ -987,6 +1050,8 @@ async function runSearch() {
     const data = await response.json();
 
     if (data.success) {
+      saveRecentSearch(query);
+      renderQuickActions();
       // —— 右侧 SOURCES 立刻显示 ——
       renderSources(data.references, data.evidence_summary);
       // —— 中间回答 打字机逐字输出 ——
@@ -1052,6 +1117,7 @@ async function checkConfigBeforeUse() {
     notice.innerHTML = `后端未启动，无法查询文献。请先启动服务，再到设置页检查配置。`;
   }
 }
+renderQuickActions();
 checkConfigBeforeUse();
 </script>
 </body>
