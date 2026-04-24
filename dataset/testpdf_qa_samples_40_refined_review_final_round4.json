@@ -1,0 +1,66 @@
+{
+  "dataset": "dataset/testpdf_qa_samples_40_refined.jsonl",
+  "overall_judgement": "comprehensive and reasonable",
+  "is_comprehensive": true,
+  "is_reasonable": true,
+  "remaining_blockers": [],
+  "round4_focus": [
+    "verify previously flagged provenance mismatches on testpdf-qa-029",
+    "verify previously flagged provenance mismatches on testpdf-qa-037",
+    "verify previously flagged provenance mismatches on testpdf-qa-040",
+    "re-run full source_pages vs evidence.page consistency audit"
+  ],
+  "verification_summary": {
+    "sample_count": 40,
+    "unique_ids": 40,
+    "required_fields_complete": true,
+    "question_type_distribution": {
+      "paper_lookup": 8,
+      "definition": 8,
+      "fact_qa": 8,
+      "comparison": 8,
+      "survey": 8
+    },
+    "pdf_coverage": {
+      "pdfs_covered": 8,
+      "expected_pdfs": 8,
+      "samples_per_pdf": 5
+    },
+    "difficulty_distribution": {
+      "easy": 14,
+      "medium": 21,
+      "hard": 5
+    },
+    "source_pages_match_evidence_pages": true,
+    "provenance_mismatch_count": 0
+  },
+  "resolved_round3_blockers": [
+    {
+      "id": "testpdf-qa-029",
+      "status": "resolved"
+    },
+    {
+      "id": "testpdf-qa-037",
+      "status": "resolved"
+    },
+    {
+      "id": "testpdf-qa-040",
+      "status": "resolved"
+    }
+  ],
+  "strengths": [
+    "Balanced 8 x 5 coverage across all five supported question types",
+    "All 8 source PDFs remain evenly covered with 5 samples each",
+    "Most samples use non-page-1 provenance, so the set is not just title-and-abstract lookup",
+    "Question types and expected intents are aligned across the dataset",
+    "The provenance field is now auditable because source_pages matches evidence.page throughout"
+  ],
+  "risks": [],
+  "coverage_gaps": [],
+  "bad_patterns": [],
+  "sample_level_findings": [],
+  "recommended_actions": [
+    "Use this refined 40-sample set as the current evaluation baseline",
+    "If future revisions touch evidence or source_pages, keep the same full provenance consistency audit in the review loop"
+  ]
+}
