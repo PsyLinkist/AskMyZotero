@@ -102,15 +102,44 @@ body {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  --filters-panel-width: 300px;
+  --sources-panel-width: 380px;
+  --panel-collapsed-width: 48px;
 }
 
 .filters-sidebar {
-  width: 300px;
+  width: var(--filters-panel-width);
   background-color: var(--el-bg-color-sidebar);
   border-right: 1px solid var(--el-border-color);
   padding: 24px;
   overflow-y: auto;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  transition: width 0.24s ease, padding 0.24s ease;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--el-text-secondary);
+}
+
+.panel-toggle svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.24s ease;
 }
 
 .filters-title {
@@ -119,7 +148,12 @@ body {
   color: var(--el-text-secondary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin-bottom: 20px;
+  margin-bottom: 0;
+}
+
+.filters-body {
+  display: flex;
+  flex-direction: column;
 }
 
 .filter-group {
@@ -340,6 +374,7 @@ body {
 }
 
 .quick-btn {
+  max-width: min(100%, 420px);
   background-color: var(--el-bg-color-sidebar);
   border: 1px solid var(--el-border-color);
   color: var(--el-text-regular);
@@ -349,6 +384,9 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   font-family: var(--font-family);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-btn:hover {
@@ -360,13 +398,14 @@ body {
 
 /* Right Sidebar (Sources) */
 .sidebar {
-  width: 380px;
+  width: var(--sources-panel-width);
   background-color: var(--el-bg-color-sidebar);
   border-left: 1px solid var(--el-border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
+  transition: width 0.24s ease;
 }
 .sidebar-header {
   padding: 24px 24px 12px 24px;
@@ -376,6 +415,10 @@ body {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .sources-list {
   flex: 1;
@@ -494,6 +537,43 @@ body {
   margin-top: 10px;
 }
 
+.app-main.filters-collapsed .filters-sidebar {
+  width: var(--panel-collapsed-width);
+  padding: 16px 8px;
+  overflow: hidden;
+}
+
+.app-main.filters-collapsed .filters-sidebar .filters-body,
+.app-main.filters-collapsed .filters-sidebar .filters-title {
+  display: none;
+}
+
+.app-main.filters-collapsed .filters-sidebar .panel-header {
+  justify-content: center;
+}
+
+.app-main.filters-collapsed .filters-sidebar .panel-toggle svg {
+  transform: rotate(180deg);
+}
+
+.app-main.sources-collapsed .sidebar {
+  width: var(--panel-collapsed-width);
+}
+
+.app-main.sources-collapsed .sidebar-header {
+  padding: 16px 8px;
+  justify-content: center;
+}
+
+.app-main.sources-collapsed .sidebar-header span,
+.app-main.sources-collapsed .sources-list {
+  display: none;
+}
+
+.app-main.sources-collapsed .sidebar .panel-toggle svg {
+  transform: rotate(180deg);
+}
+
 /* Zotero 打开按钮样式 */
 .zotero-link-btn {
   display: inline-flex;
@@ -588,45 +668,53 @@ body {
 
 <div class="app-main">
   <aside class="filters-sidebar">
-    <div class="filters-title">Filters</div>
+    <div class="panel-header">
+      <div class="filters-title">Filters</div>
+      <button class="el-button panel-toggle" id="filtersToggleBtn" type="button" aria-expanded="true" aria-controls="filtersBody" aria-label="Collapse filters panel" title="Collapse filters panel">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12.5 4.5 7 10l5.5 5.5"></path>
+        </svg>
+      </button>
+    </div>
 
-    <div class="filter-group">
-      <label class="filter-label">Date range</label>
-      <div class="filter-range">
-        <input id="yearFromFilter" type="number" inputmode="numeric" placeholder="From (YYYY)">
-        <input id="yearToFilter" type="number" inputmode="numeric" placeholder="To (YYYY)">
+    <div class="filters-body" id="filtersBody">
+      <div class="filter-group">
+        <label class="filter-label">Date range</label>
+        <div class="filter-range">
+          <input id="yearFromFilter" type="number" inputmode="numeric" placeholder="From (YYYY)">
+          <input id="yearToFilter" type="number" inputmode="numeric" placeholder="To (YYYY)">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="authorFilter">Author</label>
+        <input id="authorFilter" class="filter-control" type="text" placeholder="e.g. Volcker">
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="tagFilter">Tag</label>
+        <input id="tagFilter" class="filter-control" type="text" placeholder="e.g. retrieval, rag">
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="collectionFilter">Collection</label>
+        <input id="collectionFilter" class="filter-control" type="text" placeholder="e.g. DTRP, MMF">
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="resultsFilter">Results</label>
+        <select id="resultsFilter" class="filter-control">
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        <button class="el-button filter-clear-btn" type="button" onclick="clearAllFilters()">Clear all filters</button>
       </div>
     </div>
-
-    <div class="filter-group">
-      <label class="filter-label" for="authorFilter">Author</label>
-      <input id="authorFilter" class="filter-control" type="text" placeholder="e.g. Volcker">
-    </div>
-
-    <div class="filter-group">
-      <label class="filter-label" for="tagFilter">Tag</label>
-      <input id="tagFilter" class="filter-control" type="text" placeholder="e.g. retrieval, rag">
-    </div>
-
-    <div class="filter-group">
-      <label class="filter-label" for="collectionFilter">Collection</label>
-      <input id="collectionFilter" class="filter-control" type="text" placeholder="e.g. DTRP, MMF">
-    </div>
-
-    <div class="filter-group">
-      <label class="filter-label" for="resultsFilter">Results</label>
-      <select id="resultsFilter" class="filter-control">
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="20" selected>20</option>
-        <option value="30">30</option>
-      </select>
-    </div>
-
-    <div class="filter-actions">
-      <button class="el-button filter-clear-btn" type="button" onclick="clearAllFilters()">Clear all filters</button>
-    </div>
-
   </aside>
 
   <div class="chat-container">
@@ -657,7 +745,14 @@ body {
   </div>
 
   <div class="sidebar">
-    <div class="sidebar-header">SOURCES</div>
+    <div class="sidebar-header">
+      <span>SOURCES</span>
+      <button class="el-button panel-toggle" id="sourcesToggleBtn" type="button" aria-expanded="true" aria-controls="sourcesArea" aria-label="Collapse sources panel" title="Collapse sources panel">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7.5 4.5 13 10l-5.5 5.5"></path>
+        </svg>
+      </button>
+    </div>
     <div class="sources-list" id="sourcesArea">
       <div class="empty-sources">检索后将在此处显示引用文献</div>
     </div>
@@ -682,6 +777,12 @@ const tagFilter = document.getElementById('tagFilter');
 const collectionFilter = document.getElementById('collectionFilter');
 const resultsFilter = document.getElementById('resultsFilter');
 const quickActions = document.getElementById('quickActions');
+const appMain = document.querySelector('.app-main');
+const filtersToggleBtn = document.getElementById('filtersToggleBtn');
+const sourcesToggleBtn = document.getElementById('sourcesToggleBtn');
+const RECENT_SEARCHES_KEY = 'askmyzoteroRecentSearches';
+const PANEL_STATE_KEY = 'askmyzoteroPanelState';
+const MAX_RECENT_SEARCHES = 2;
 const DEFAULT_QUICK_QUERIES = [
   { label: '检索方法', query: '哪些文章使用了检索方法？' },
   { label: 'RAG顶会', query: '我读过哪些关于RAG的文献？其中有哪些是顶会的？' }
@@ -702,11 +803,45 @@ function fillQuery(text) {
   queryInput.focus();
 }
 
+function getRecentSearches() {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, MAX_RECENT_SEARCHES);
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveRecentSearch(query) {
+  const normalized = String(query || '').trim();
+  if (!normalized) return;
+
+  const next = [
+    normalized,
+    ...getRecentSearches().filter(item => item !== normalized)
+  ].slice(0, MAX_RECENT_SEARCHES);
+
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+}
+
+function truncateQuickLabel(text, maxChars = 5) {
+  const normalized = String(text || '').trim();
+  const chars = Array.from(normalized);
+  if (chars.length <= maxChars) return normalized;
+  return `${chars.slice(0, maxChars).join('')}...`;
+}
+
 function createQuickButton(label, query) {
   const button = document.createElement('button');
   button.className = 'quick-btn';
   button.type = 'button';
-  button.textContent = label;
+  button.textContent = truncateQuickLabel(label);
+  button.title = query;
   button.addEventListener('click', () => fillQuery(query));
   return button;
 }
@@ -715,15 +850,75 @@ function renderQuickActions() {
   if (!quickActions) return;
   quickActions.innerHTML = '';
 
+  const recentSearches = getRecentSearches();
+  if (recentSearches.length > 0) {
+    recentSearches.forEach(query => {
+      quickActions.appendChild(createQuickButton(query, query));
+    });
+    return;
+  }
+
   DEFAULT_QUICK_QUERIES.forEach(item => {
     quickActions.appendChild(createQuickButton(item.label, item.query));
   });
+}
+
+function getPanelState() {
+  try {
+    const raw = localStorage.getItem(PANEL_STATE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      filtersCollapsed: Boolean(parsed.filtersCollapsed),
+      sourcesCollapsed: Boolean(parsed.sourcesCollapsed),
+    };
+  } catch (_) {
+    return {
+      filtersCollapsed: false,
+      sourcesCollapsed: false,
+    };
+  }
+}
+
+function savePanelState(state) {
+  localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(state));
+}
+
+function applyPanelState(state) {
+  const filtersCollapsed = Boolean(state.filtersCollapsed);
+  const sourcesCollapsed = Boolean(state.sourcesCollapsed);
+
+  appMain.classList.toggle('filters-collapsed', filtersCollapsed);
+  appMain.classList.toggle('sources-collapsed', sourcesCollapsed);
+
+  if (filtersToggleBtn) {
+    filtersToggleBtn.setAttribute('aria-expanded', String(!filtersCollapsed));
+    filtersToggleBtn.setAttribute('aria-label', filtersCollapsed ? 'Expand filters panel' : 'Collapse filters panel');
+    filtersToggleBtn.title = filtersCollapsed ? 'Expand filters panel' : 'Collapse filters panel';
+  }
+
+  if (sourcesToggleBtn) {
+    sourcesToggleBtn.setAttribute('aria-expanded', String(!sourcesCollapsed));
+    sourcesToggleBtn.setAttribute('aria-label', sourcesCollapsed ? 'Expand sources panel' : 'Collapse sources panel');
+    sourcesToggleBtn.title = sourcesCollapsed ? 'Expand sources panel' : 'Collapse sources panel';
+  }
+}
+
+function togglePanel(panelName) {
+  const current = getPanelState();
+  const next = {
+    ...current,
+    [panelName]: !current[panelName],
+  };
+  savePanelState(next);
+  applyPanelState(next);
 }
 
 queryInput.addEventListener('input', function() { autoResize(this); });
 queryInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearch(); }
 });
+filtersToggleBtn.addEventListener('click', function() { togglePanel('filtersCollapsed'); });
+sourcesToggleBtn.addEventListener('click', function() { togglePanel('sourcesCollapsed'); });
 
 function splitFilterInput(value) {
   return String(value || '')
@@ -970,6 +1165,7 @@ async function runSearch() {
     const data = await response.json();
 
     if (data.success) {
+      saveRecentSearch(query);
       renderQuickActions();
       // —— 右侧 SOURCES 立刻显示 ——
       renderSources(data.references, data.evidence_summary);
@@ -1037,6 +1233,7 @@ async function checkConfigBeforeUse() {
   }
 }
 renderQuickActions();
+applyPanelState(getPanelState());
 checkConfigBeforeUse();
 </script>
 </body>
