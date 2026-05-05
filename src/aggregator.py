@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
+from src.answer_prompts import ACADEMIC_RAG_SYSTEM_PROMPT, PAPER_LIST_HUMAN_PROMPT
 from src.domain_models import AnswerPayload, EvidenceRecord, PaperCandidate
 
 
@@ -19,6 +20,26 @@ BASE_SECTION_WEIGHTS = {
     "introduction": 0.95,
     "body": 1.00,
     "references": 0.35,
+}
+
+GENERIC_RANKING_TERMS = {
+    "algorithm",
+    "algorithms",
+    "applied",
+    "approach",
+    "method",
+    "methodology",
+    "methods",
+    "page",
+    "section",
+    "use",
+    "used",
+    "using",
+    "如何",
+    "怎么",
+    "怎样",
+    "使用",
+    "算法",
 }
 
 INTENT_SECTION_OVERRIDES = {
@@ -46,10 +67,36 @@ def resolve_section_weights(intent: str | None) -> dict[str, float]:
 
 
 def _normalize_query_terms(query_bundle: Any) -> list[str]:
-    raw_query = getattr(query_bundle, "raw_query", None)
-    if raw_query is None and isinstance(query_bundle, dict):
-        raw_query = query_bundle.get("raw_query", "")
-    return [term.lower() for term in str(raw_query or "").split() if len(term.strip()) >= 2]
+    values: list[Any] = []
+    raw_query = _get_bundle_value(query_bundle, "raw_query", "")
+    values.append(raw_query)
+    values.extend(_get_bundle_value(query_bundle, "entities", []) or [])
+    values.extend(_get_bundle_value(query_bundle, "keywords", []) or [])
+    values.extend(_get_bundle_value(query_bundle, "rewritten_queries", []) or [])
+
+    terms: list[str] = []
+    for value in values:
+        terms.extend(re.findall(r"[A-Za-z][A-Za-z0-9_-]*|[\u4e00-\u9fff]{2,}", str(value or "").lower()))
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if len(term) < 2 or term in seen:
+            continue
+        seen.add(term)
+        ordered.append(term)
+    return ordered
+
+
+def _query_term_weight(term: str) -> int:
+    normalized = str(term or "").strip()
+    if not normalized:
+        return 0
+    if " " in normalized or "-" in normalized:
+        return 3
+    if len(normalized) >= 6:
+        return 2
+    return 1
 
 
 def _normalize_text(value: Any, max_len: int = 300) -> str:
@@ -65,12 +112,25 @@ def _split_into_sentences(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
-def _build_evidence_snippet(text: str, query_terms: list[str], max_chars: int = 280) -> str:
+def _build_evidence_snippet(text: str, query_terms: list[str], max_chars: int = 520) -> str:
     sentences = _split_into_sentences(text)
     if not sentences:
         return ""
-    matched = [sentence for sentence in sentences if any(term in sentence.lower() for term in query_terms)]
-    chosen = matched[:2] if matched else sentences[:2]
+
+    scored_sentences: list[tuple[int, int, str]] = []
+    for index, sentence in enumerate(sentences):
+        lower_sentence = sentence.lower()
+        matched_terms = [term for term in query_terms if term in lower_sentence]
+        if not matched_terms:
+            continue
+        score = sum(_query_term_weight(term) for term in set(matched_terms))
+        scored_sentences.append((score, index, sentence))
+
+    if scored_sentences:
+        selected = sorted(scored_sentences, key=lambda item: (-item[0], item[1]))[:3]
+        chosen = [sentence for _, _, sentence in sorted(selected, key=lambda item: item[1])]
+    else:
+        chosen = sentences[:2]
     snippet = " ".join(chosen).strip()
     if len(snippet) > max_chars:
         snippet = snippet[: max_chars - 3].rstrip() + "..."
@@ -140,8 +200,12 @@ def _score_chunk_for_paper(query_terms: list[str], intent: str, chunk: dict[str,
     matched_terms = [term for term in query_terms if term in text_lower or term in title_lower]
     overlap_bonus = min(len(set(matched_terms)), 4) * 0.08
     title_bonus = 0.18 if any(term in title_lower for term in query_terms) else 0.0
+    specific_terms = [term for term in query_terms if term not in GENERIC_RANKING_TERMS]
+    specific_title_hits = [term for term in specific_terms if term in title_lower]
+    specific_text_hits = [term for term in specific_terms if term in text_lower]
+    specific_bonus = min(len(set(specific_text_hits)), 3) * 0.18 + min(len(set(specific_title_hits)), 2) * 0.35
     page = chunk.get("page_start") or chunk.get("page")
-    score = weighted_score + overlap_bonus + title_bonus + _evidence_priority(intent, chunk_type, page)
+    score = weighted_score + overlap_bonus + title_bonus + specific_bonus + _evidence_priority(intent, chunk_type, page)
 
     reasons: list[str] = []
     if matched_terms:
@@ -234,7 +298,18 @@ def aggregate_to_papers(query_bundle: Any, chunks: list[dict[str, Any]], top_pap
 
 
 def _build_paper_context(index: int, paper: PaperCandidate) -> str:
-    parts = [f"[{index}]"]
+    title = paper.title or f"候选论文 {index}"
+    parts = [f"[{index}] {title}"]
+    authors = "、".join(paper.authors or [])
+    byline_parts = []
+    if authors:
+        byline_parts.append(f"作者：{authors}")
+    if paper.year:
+        byline_parts.append(f"年份：{paper.year}")
+    if paper.venue:
+        byline_parts.append(f"来源：{paper.venue}")
+    if byline_parts:
+        parts.append("；".join(byline_parts))
     if paper.match_reason:
         parts.append(f"匹配原因：{'；'.join(paper.match_reason[:3])}")
 
@@ -243,8 +318,8 @@ def _build_paper_context(index: int, paper: PaperCandidate) -> str:
         page_text = f"第 {evidence.page} 页" if evidence.page else "页码未知"
         section_text = evidence.section or "正文"
         snippet = evidence.text.strip().replace("\n", " ")
-        if len(snippet) > 220:
-            snippet = snippet[:217] + "..."
+        if len(snippet) > 520:
+            snippet = snippet[:517] + "..."
         evidence_lines.append(f"- {page_text} | {section_text}：{snippet}")
     if evidence_lines:
         parts.append("证据：")
@@ -267,15 +342,6 @@ def _sanitize_answer_text(answer_text: str, paper_count: int) -> str:
         if not line:
             cleaned_lines.append("")
             continue
-        lower_line = line.lower()
-        if re.match(r"^\d+\.\s+", line):
-            continue
-        if re.match(r"^[-*]\s*(理由|证据|参考文献|来源)\s*[:：]", line):
-            continue
-        if re.match(r"^(理由|证据|参考文献|来源)\s*[:：]", line):
-            continue
-        if any(keyword in lower_line for keyword in ("authors:", "author:", "venue:", "year:", "title:")):
-            continue
         line = re.sub(
             r"\[\s*(\d+)\s*\]",
             lambda match: f"[{match.group(1)}]" if 1 <= int(match.group(1)) <= paper_count else "",
@@ -285,9 +351,6 @@ def _sanitize_answer_text(answer_text: str, paper_count: int) -> str:
 
     cleaned = "\n".join(cleaned_lines)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
-    if not re.search(r"\[(\d+)\]", cleaned):
-        suffix = "".join(f"[{index}]" for index in range(1, min(paper_count, 10) + 1))
-        cleaned = f"{cleaned} {suffix}".strip()
     return cleaned
 
 
@@ -303,40 +366,14 @@ def _extract_citation_indices(answer_text: str) -> list[int]:
 
 
 def _ensure_paper_citation_coverage(answer_text: str, paper_count: int, limit: int = 10) -> str:
-    if paper_count <= 0:
-        return str(answer_text or "").strip()
-
-    target_count = min(paper_count, limit)
-    cited = set(_extract_citation_indices(answer_text))
-    missing = [idx for idx in range(1, target_count + 1) if idx not in cited]
-    if not missing:
-        return str(answer_text or "").strip()
-
-    suffix = "".join(f"[{idx}]" for idx in missing)
-    base = str(answer_text or "").rstrip()
-    if not base:
-        return f"相关文献包括：{suffix}"
-    return f"{base}\n\n补充相关文献：{suffix}".strip()
+    return str(answer_text or "").strip()
 
 
 def _generate_llm_answer_text(query_bundle: Any, papers: list[PaperCandidate], llm: Any) -> tuple[str, dict[str, Any]]:
     prompt = ChatPromptTemplate.from_messages(
         [
-            (
-                "system",
-                "你是一个学术文献助手。请只根据给定的候选论文证据回答用户问题，不要使用外部知识。"
-                "你的任务是判断哪些论文最相关，并说明它们为什么相关。"
-                "每个事实性判断都尽量使用内联编号引用，例如 [1]、[2] 或 [1][2]。"
-                "如果证据不足，请明确说明不足，不要编造论文内容、实验结果或作者观点。"
-                "不要输出“理由：”“证据：”“参考文献：”“来源：”这类标签。"
-                "不要重复完整书目信息，因为详细题名、作者和页码会由界面中的 SOURCES 面板展示。"
-                "回答应简洁、可读，并直接回应用户的问题。"
-            ),
-            (
-                "human",
-                "用户问题：{query}\n\n候选论文证据：\n{paper_context}\n\n"
-                "请直接输出回答正文。优先回答哪些论文使用了相关方法或概念，并在相关句子后标注 [n] 引用。"
-            ),
+            ("system", ACADEMIC_RAG_SYSTEM_PROMPT),
+            ("human", PAPER_LIST_HUMAN_PROMPT),
         ]
     )
     paper_context = "\n\n".join(_build_paper_context(index, paper) for index, paper in enumerate(papers, start=1))

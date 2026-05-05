@@ -140,7 +140,7 @@ def _filter_and_remap_citations(answer: str, items: list[dict]) -> tuple[str, li
         lambda m: f"[{remap[int(m.group(1))]}]" if int(m.group(1)) in remap else "",
         str(answer or ""),
     )
-    remapped_answer = re.sub(r"\s{2,}", " ", remapped_answer)
+    remapped_answer = re.sub(r"[ \t]{2,}", " ", remapped_answer)
     remapped_answer = re.sub(r"\n{3,}", "\n\n", remapped_answer).strip()
     return remapped_answer, filtered_items
 

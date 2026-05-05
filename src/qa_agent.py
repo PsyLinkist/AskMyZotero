@@ -13,6 +13,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.aggregator import aggregate_to_papers, generate_answer, resolve_section_weights
+from src.answer_prompts import ACADEMIC_RAG_SYSTEM_PROMPT, DIRECT_ANSWER_HUMAN_PROMPT
 from src.config import AppConfig
 from src.domain_models import QueryBundle
 from src.indexer import build_llm, get_vectorstore
@@ -90,8 +91,14 @@ DEFINITION_HINTS = (
     "definition",
 )
 FACT_HINTS_STRONG = (
+    "如何",
+    "怎么",
+    "怎样",
     "how many",
     "how much",
+    "how does",
+    "how do",
+    "how is",
     "what reduction",
     "what average",
     "what accuracy",
@@ -341,14 +348,28 @@ class ZoteroAgent:
             [
                 (
                     "system",
-                    "You classify user queries for a personal academic literature assistant. "
-                    "Choose exactly one intent from: fact_qa, comparison, definition, survey, paper_lookup. "
-                    "Academic papers follow structured sections such as title, abstract, introduction, method, experiment/results, conclusion, and references. "
-                    "When a query asks which papers/articles use, adopt, propose, contain, or mention a method/topic in a paper section such as method, approach, experiment, or abstract, classify it as paper_lookup. "
-                    "Use paper_lookup for queries asking which papers/articles/works use, discuss, propose, compare, contain, or mention a method/topic. "
-                    "Use survey for broad overview or review requests. "
+                    "You classify user queries for a Zotero-based academic RAG assistant. "
+                    "Choose exactly one intent: fact_qa, comparison, definition, survey, paper_lookup. "
+                    "Classify the user's desired output, not isolated keywords. "
+                    "Use this decision checklist in order: "
+                    "1) If the user asks to find, list, identify, recommend, or enumerate papers/articles/works/documents, use paper_lookup. "
+                    "2) If the user asks for differences, similarities, advantages, trade-offs, or an explicit A-vs-B relation, use comparison. "
+                    "3) If the user asks for a broad overview, synthesis, literature review, taxonomy, trend, workflow, or main themes across sources, use survey. "
+                    "4) If the user asks what a term/concept/method is, or asks for a definition/meaning, use definition. "
+                    "5) If the user asks for a concrete answer about a mechanism, process, usage, result, number, evidence, claim, or implementation detail, use fact_qa. "
+                    "Important distinctions: "
+                    "- A query mentioning papers is not automatically paper_lookup; choose paper_lookup only when the requested output is a set/list of papers. "
+                    "- A query mentioning two methods is not automatically comparison; choose comparison only when the user asks to compare or relate them. "
+                    "- A query asking 'how/why/where/when/how many' usually asks for fact_qa unless it requests a survey or paper list. "
+                    "- A query asking 'what is X' usually asks for definition unless it requests an overview across literature. "
+                    "Examples: "
+                    "'Which papers use PPR?' -> paper_lookup. "
+                    "'How does HippoRAG use PPR?' -> fact_qa. "
+                    "'What is HippoRAG?' -> definition. "
+                    "'Compare HippoRAG and GraphRAG.' -> comparison. "
+                    "'Summarize the main approaches to GraphRAG.' -> survey. "
                     "Return strict JSON only in the format "
-                    '{{"intent":"paper_lookup","confidence":0.92}}.'
+                    '{{"intent":"fact_qa","confidence":0.92,"reason":"brief rationale"}}.'
                 ),
                 (
                     "human",
@@ -831,9 +852,21 @@ class ZoteroAgent:
             title = chunk.get("paper_title") or chunk.get("title") or chunk.get("source") or f"片段 {index}"
             page = chunk.get("page") or chunk.get("page_start")
             page_text = f"第 {page} 页" if page else "页码未知"
+            authors = chunk.get("authors")
+            if isinstance(authors, list):
+                authors_text = "、".join(str(author) for author in authors if author)
+            else:
+                authors_text = str(authors or "").strip()
+            year = chunk.get("year")
+            metadata_parts = []
+            if authors_text:
+                metadata_parts.append(f"作者：{authors_text}")
+            if year:
+                metadata_parts.append(f"年份：{year}")
             answer_context = str(chunk.get("answer_context") or chunk.get("text") or "")
             raw_text = str(chunk.get("raw_text") or chunk.get("text") or "")
-            context_parts.append(f"[{index}] {title} | {page_text}\n{answer_context}")
+            metadata_line = f"\n{'；'.join(metadata_parts)}" if metadata_parts else ""
+            context_parts.append(f"[{index}] {title} | {page_text}{metadata_line}\n{answer_context}")
             snippet = raw_text.replace("\n", " ").strip()
             if len(snippet) > 120:
                 snippet = snippet[:117] + "..."
@@ -842,19 +875,8 @@ class ZoteroAgent:
         context = "\n\n".join(context_parts)
         prompt = ChatPromptTemplate.from_messages(
             [
-                (
-                    "system",
-                    "你是一个严谨的学术文献助手。请只根据给定的证据片段回答用户问题，不要使用外部知识。"
-                    "回答时优先直接回应问题，再用简短的证据支撑结论。"
-                    "每个事实性陈述都尽量附上内联编号引用，例如 [1]、[2] 或 [1][2]。"
-                    "如果证据不足，请明确说明目前文献库中的证据不足，不要编造答案。"
-                    "不要输出完整书目信息，不要写“参考文献：”“来源：”“证据：”之类的标签。"
-                    "保持回答自然、清晰、信息密度高。"
-                ),
-                (
-                    "human",
-                    "用户问题：{query}\n\n证据片段：\n{context}\n\n请直接输出回答正文，并在相关句子后使用 [n] 形式引用。"
-                ),
+                ("system", ACADEMIC_RAG_SYSTEM_PROMPT),
+                ("human", DIRECT_ANSWER_HUMAN_PROMPT),
             ]
         )
         chain = prompt | self.llm | StrOutputParser()
@@ -919,8 +941,6 @@ class ZoteroAgent:
             cleaned,
         )
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
-        if evidence_count > 0 and not re.search(r"\[(\d+)\]", cleaned):
-            cleaned = f"{cleaned} [1]".strip()
         return cleaned
 
     def _fallback_direct_answer(self, query_bundle: QueryBundle, evidence_chunks: list[dict[str, Any]]) -> str:
@@ -942,10 +962,12 @@ class ZoteroAgent:
         cleaned = str(answer or "").strip()
         if source_count <= 0:
             return cleaned
-        if re.search(r"\[(\d+)\]", cleaned):
-            return cleaned
-        suffix = "".join(f"[{index}]" for index in range(1, min(source_count, 3) + 1))
-        return f"{cleaned} {suffix}".strip()
+        cleaned = re.sub(
+            r"\[\s*(\d+)\s*\]",
+            lambda match: f"[{match.group(1)}]" if 1 <= int(match.group(1)) <= source_count else "",
+            cleaned,
+        )
+        return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
     def _resolve_attachment_key(self, metadata: dict[str, Any]) -> str | None:
         attachment_key = str(metadata.get("attachment_key") or "").strip()
