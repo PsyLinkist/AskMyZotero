@@ -53,6 +53,69 @@ def _uses_paper_list_answer(intent: str) -> bool:
 
 VALID_INTENTS = {"fact_qa", "comparison", "definition", "survey", "paper_lookup"}
 
+PAPER_LOOKUP_PREFIXES = (
+    "which paper",
+    "which papers",
+    "what paper",
+    "what papers",
+    "哪篇论文",
+    "哪些论文",
+)
+COMPARISON_HINTS = (
+    "compare",
+    "compared with",
+    "compared to",
+    "difference",
+    "differ",
+    "versus",
+    "vs",
+    "trade-off",
+    "advantages",
+)
+SURVEY_HINTS = (
+    "main stages",
+    "main parts",
+    "main components",
+    "workflow",
+    "pipeline",
+    "roles",
+    "overview",
+    "architecture",
+)
+DEFINITION_HINTS = (
+    "what is",
+    "what was",
+    "what does",
+    "define",
+    "definition",
+)
+FACT_HINTS_STRONG = (
+    "how many",
+    "how much",
+    "what reduction",
+    "what average",
+    "what accuracy",
+    "what score",
+    "what default",
+    "what improvement",
+    "what performance",
+    "what split",
+    "how was",
+)
+SINGLE_PAPER_CUES = (
+    "according to the paper",
+    "in the paper",
+    "the paper",
+    "et al.",
+)
+IDENTIFICATION_VERBS = (
+    "proposes",
+    "introduces",
+    "presents",
+    "proposed",
+    "introduced",
+)
+
 
 def _normalize_filter_text_list(value: Any) -> list[str]:
     if value is None:
@@ -135,6 +198,34 @@ def _normalize_text_values(values: Any) -> list[str]:
     return normalized
 
 
+def _starts_with_any(lowered: str, prefixes: tuple[str, ...]) -> bool:
+    return any(lowered.startswith(prefix) for prefix in prefixes)
+
+
+def _contains_any(lowered: str, patterns: tuple[str, ...]) -> bool:
+    return any(pattern in lowered for pattern in patterns)
+
+
+def _infer_retrieval_mode(intent: str, query: str) -> str:
+    lowered = query.lower()
+    if intent == "paper_lookup":
+        return "paper_lookup"
+    if intent == "comparison":
+        return "cross_paper_compare"
+    if _contains_any(lowered, SURVEY_HINTS) and not _starts_with_any(lowered, PAPER_LOOKUP_PREFIXES):
+        return "single_paper_evidence"
+    return "single_paper_evidence"
+
+
+def _infer_answer_style(intent: str, query: str) -> str:
+    lowered = query.lower()
+    if intent == "paper_lookup":
+        return "paper_list"
+    if intent == "survey" and _starts_with_any(lowered, PAPER_LOOKUP_PREFIXES):
+        return "paper_list"
+    return "direct_answer"
+
+
 INTENT_PATTERNS = [
     ("comparison", ("区别", "差异", "对比", "compare", "versus", "vs")),
     ("definition", ("什么是", "是什么", "定义", "meaning of", "what is")),
@@ -165,6 +256,8 @@ class ZoteroAgent:
         normalized_filters = _normalize_filters(filters)
 
         intent, confidence = self._classify_intent(clean_query)
+        retrieval_mode = _infer_retrieval_mode(intent, clean_query)
+        answer_style = _infer_answer_style(intent, clean_query)
 
         rewritten_queries = self._build_rewritten_queries(clean_query)
         return QueryBundle(
@@ -177,16 +270,25 @@ class ZoteroAgent:
             filters=normalized_filters,
             search_plan={
                 "use_dense": True,
-                "retrieve_mode": "paper_lookup" if intent == "paper_lookup" else "knowledge_qa",
+                "retrieve_mode": retrieval_mode,
             },
             answer_plan={
-                "style": "paper_list" if _uses_paper_list_answer(intent) else "direct_answer",
+                "style": answer_style,
                 "cite_evidence": True,
             },
         )
 
     def _classify_intent(self, query: str) -> tuple[str, float]:
+        deterministic_intent, deterministic_confidence = self._classify_intent_with_query_structure(query)
+        if deterministic_intent in VALID_INTENTS:
+            self._last_llm_debug["intent_resolution"] = {
+                "source": "query_structure",
+                "intent": deterministic_intent,
+                "confidence": deterministic_confidence,
+            }
+            return deterministic_intent, deterministic_confidence
         llm_intent, llm_confidence = self._classify_intent_with_llm(query)
+        llm_intent, llm_confidence = self._post_adjust_intent(query, llm_intent, llm_confidence)
         if llm_intent in VALID_INTENTS:
             self._last_llm_debug["intent_resolution"] = {
                 "source": "llm",
@@ -202,6 +304,38 @@ class ZoteroAgent:
         }
         return rule_intent, rule_confidence
 
+    def _classify_intent_with_query_structure(self, query: str) -> tuple[str | None, float]:
+        lowered = query.lower().strip()
+        if _starts_with_any(lowered, PAPER_LOOKUP_PREFIXES):
+            return "paper_lookup", 0.98
+        if _contains_any(lowered, COMPARISON_HINTS):
+            return "comparison", 0.95
+        if _contains_any(lowered, SURVEY_HINTS):
+            return "survey", 0.92
+        if _contains_any(lowered, FACT_HINTS_STRONG) or re.search(r"\b\d+(?:\.\d+)?\b", lowered):
+            return "fact_qa", 0.9
+        if _contains_any(lowered, DEFINITION_HINTS):
+            return "definition", 0.9
+        return None, 0.0
+
+    def _post_adjust_intent(self, query: str, intent: str | None, confidence: float) -> tuple[str | None, float]:
+        lowered = query.lower().strip()
+        if intent != "paper_lookup":
+            return intent, confidence
+        if _starts_with_any(lowered, PAPER_LOOKUP_PREFIXES):
+            return intent, confidence
+        if _contains_any(lowered, COMPARISON_HINTS):
+            return "comparison", max(confidence, 0.9)
+        if _contains_any(lowered, SURVEY_HINTS):
+            return "survey", max(confidence, 0.88)
+        if _contains_any(lowered, FACT_HINTS_STRONG) or re.search(r"\b\d+(?:\.\d+)?\b", lowered):
+            return "fact_qa", max(confidence, 0.88)
+        if _contains_any(lowered, DEFINITION_HINTS) or _contains_any(lowered, SINGLE_PAPER_CUES):
+            return "definition", max(confidence, 0.88)
+        if "paper" in lowered and _contains_any(lowered, IDENTIFICATION_VERBS):
+            return "paper_lookup", confidence
+        return intent, confidence
+
     def _classify_intent_with_llm(self, query: str) -> tuple[str | None, float]:
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -214,11 +348,11 @@ class ZoteroAgent:
                     "Use paper_lookup for queries asking which papers/articles/works use, discuss, propose, compare, contain, or mention a method/topic. "
                     "Use survey for broad overview or review requests. "
                     "Return strict JSON only in the format "
-                    '{{"intent":"paper_lookup","confidence":0.92}}.',
+                    '{{"intent":"paper_lookup","confidence":0.92}}.'
                 ),
                 (
                     "human",
-                    "Query: {query}\nReturn JSON only.",
+                    "Query: {query}\nReturn JSON only."
                 ),
             ]
         )
@@ -322,9 +456,11 @@ class ZoteroAgent:
         references: list[dict[str, Any]],
         top_k: int,
     ) -> Dict[str, Any]:
-        if _uses_paper_list_answer(query_bundle.intent):
-            paper_limit = max(top_k, 8)
-            papers = aggregate_to_papers(query_bundle, chunks, top_papers=paper_limit)
+        answer_style = str(query_bundle.answer_plan.get("style", "direct_answer"))
+        if answer_style == "paper_list":
+            ranked_chunks = self._rerank_chunks_for_query(query_bundle, chunks)
+            paper_limit = max(top_k, 10)
+            papers = aggregate_to_papers(query_bundle, ranked_chunks, top_papers=paper_limit)
             payload = generate_answer(query_bundle, papers, self.llm)
             return self._build_response(
                 success=True,
@@ -332,7 +468,7 @@ class ZoteroAgent:
                 answer=payload.answer_text,
                 answer_type=payload.answer_type,
                 references=references,
-                snippets=chunks[:top_k],
+                snippets=ranked_chunks[:top_k],
                 evidence_summary=payload.evidence_summary,
                 papers=[paper.to_dict() for paper in payload.papers],
                 status=payload.status,
@@ -342,6 +478,7 @@ class ZoteroAgent:
                     "rewritten_queries": query_bundle.rewritten_queries,
                     "intent_confidence": query_bundle.intent_confidence,
                     "hard_filters": query_bundle.filters,
+                    "ranked_chunk_count": len(ranked_chunks),
                 },
             )
         return self._synthesize_direct_answer(query_bundle, chunks)
@@ -350,10 +487,12 @@ class ZoteroAgent:
         total_index_docs = self._estimate_vectorstore_doc_count()
         candidate_scope = self.metadata_store.resolve_candidate_scope(query_bundle.filters)
         candidate_row_ids = candidate_scope["faiss_row_ids"] if query_bundle.filters else None
-        if _uses_paper_list_answer(query_bundle.intent):
+        answer_style = str(query_bundle.answer_plan.get("style", "direct_answer"))
+        retrieve_mode = str(query_bundle.search_plan.get("retrieve_mode", "single_paper_evidence"))
+        if answer_style == "paper_list" or retrieve_mode == "paper_lookup":
             retrieve_k = max(top_k * 4, 12)
         else:
-            retrieve_k = max(top_k, 6)
+            retrieve_k = max(top_k * 3, 12)
         if query_bundle.filters:
             retrieve_k = min(max(retrieve_k, 12), max(1, candidate_scope["chunk_count"]))
         seen_chunk_ids: set[str] = set()
@@ -364,6 +503,8 @@ class ZoteroAgent:
             "candidate_paper_count": candidate_scope["paper_count"],
             "candidate_chunk_count": candidate_scope["chunk_count"],
             "retrieve_k": retrieve_k,
+            "retrieve_mode": retrieve_mode,
+            "answer_style": answer_style,
             "total_index_docs": total_index_docs,
             "rewritten_queries": query_bundle.rewritten_queries[:3],
             "per_query": [],
@@ -621,16 +762,68 @@ class ZoteroAgent:
             return []
         return []
 
-    def _synthesize_direct_answer(self, query_bundle: QueryBundle, chunks: list[dict[str, Any]]) -> Dict[str, Any]:
+    def _score_chunk_for_query(self, query_bundle: QueryBundle, chunk: dict[str, Any]) -> float:
         section_weights = resolve_section_weights(query_bundle.intent)
-        ranked_chunks = sorted(
-            chunks,
-            key=lambda chunk: (
-                section_weights.get(str(chunk.get("chunk_type") or "body"), 1.0) * float(chunk.get("score", 0.0)),
-                section_weights.get(str(chunk.get("section") or "body"), 1.0),
+        raw_score = float(chunk.get("score", 0.0))
+        chunk_type = str(chunk.get("chunk_type") or chunk.get("section") or "body").lower()
+        text = str(chunk.get("raw_text") or chunk.get("text") or "")
+        text_lower = text.lower()
+        title_lower = str(chunk.get("paper_title") or chunk.get("title") or "").lower()
+        page = chunk.get("page") or chunk.get("page_start")
+        overlap_bonus = 0.0
+        keyword_hits = 0
+        for keyword in query_bundle.keywords[:10]:
+            if keyword and keyword in text_lower:
+                keyword_hits += 1
+                overlap_bonus += 0.12
+            elif keyword and keyword in title_lower:
+                overlap_bonus += 0.08
+        entity_bonus = 0.0
+        for entity in query_bundle.entities[:6]:
+            entity_lower = entity.lower()
+            if entity_lower and entity_lower in text_lower:
+                entity_bonus += 0.18
+            elif entity_lower and entity_lower in title_lower:
+                entity_bonus += 0.12
+        position_bonus = 0.0
+        if isinstance(page, int):
+            if page <= 3:
+                position_bonus += 0.12
+            elif page <= 8:
+                position_bonus += 0.05
+        if query_bundle.intent == "paper_lookup" and chunk_type in {"abstract", "introduction", "conclusion"}:
+            position_bonus += 0.2
+        if query_bundle.intent == "survey" and chunk_type in {"abstract", "introduction", "conclusion"}:
+            position_bonus += 0.12
+        if query_bundle.intent == "comparison" and chunk_type in {"experiment", "conclusion"}:
+            position_bonus += 0.15
+        if query_bundle.intent == "fact_qa" and chunk_type in {"experiment", "method", "abstract"}:
+            position_bonus += 0.1
+        if query_bundle.intent == "definition" and chunk_type in {"abstract", "introduction", "method"}:
+            position_bonus += 0.1
+        sentence_bonus = 0.0
+        if keyword_hits >= 2:
+            sentence_bonus += 0.08
+        return raw_score * section_weights.get(chunk_type, 1.0) + overlap_bonus + entity_bonus + position_bonus + sentence_bonus
+
+    def _rerank_chunks_for_query(self, query_bundle: QueryBundle, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rescored: list[dict[str, Any]] = []
+        for chunk in chunks:
+            updated = dict(chunk)
+            updated["query_score"] = self._score_chunk_for_query(query_bundle, updated)
+            rescored.append(updated)
+        rescored.sort(
+            key=lambda item: (
+                float(item.get("query_score", 0.0)),
+                float(item.get("score", 0.0)),
             ),
             reverse=True,
         )
+        return rescored
+
+    def _synthesize_direct_answer(self, query_bundle: QueryBundle, chunks: list[dict[str, Any]]) -> Dict[str, Any]:
+        section_weights = resolve_section_weights(query_bundle.intent)
+        ranked_chunks = self._rerank_chunks_for_query(query_bundle, chunks)
         evidence_chunks = ranked_chunks[: min(6, len(ranked_chunks))]
         context_parts: list[str] = []
         evidence_summary: list[str] = []
@@ -651,15 +844,19 @@ class ZoteroAgent:
             [
                 (
                     "system",
-                    "你是一个严谨的个人文献知识库问答助手。"
-                    "请根据提供的文献证据直接回答问题，优先给出明确结论。"
-                    "如果证据不足，请明确说明不确定，不要编造。"
-                    "回答保持简洁。"
-                    "如需引用证据，只能使用编号引用 [1]、[2] 这种形式。"
-                    "不要使用“证据1”“资料1”“来源1”等写法。"
-                    "不要输出参考文献列表或重复展开文献标题、作者、年份。",
+                    "???????????????????"
+                    "????????????????????????????"
+                    "?????????????????????????????????????????"
+                    "??????????????????????????? [1]?[2] ? [1][2]?"
+                    "???????????????????????????????????"
+                    "????????????????????????????"
+                    "????????????????????????????"
+                    "??????????????????????????????????????????????????"
                 ),
-                ("human", "问题：{query}\n\n证据：\n{context}\n\n请直接输出回答正文。"),
+                (
+                    "human",
+                    "???{query}\n\n???\n{context}\n\n??????????????????????????????? [n] ???????"
+                ),
             ]
         )
         chain = prompt | self.llm | StrOutputParser()
