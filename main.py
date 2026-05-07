@@ -1,8 +1,7 @@
 ﻿"""本文件是命令行入口，负责串联配置加载、索引准备和问答流程。"""
 
 from src.config import parse_args, resolve_config, print_config_summary
-from src.indexer import get_vectorstore, create_chat_chain, answer_once, interactive_chat
-from src.manifest import prepare_manifest_snapshot
+from src.indexer import get_vectorstore, incremental_update_vectorstore, create_chat_chain, answer_once, interactive_chat
 
 
 def main() -> None:
@@ -14,7 +13,9 @@ def main() -> None:
     config = resolve_config(args)
     print_config_summary(config)
 
-    prepare_manifest_snapshot(config)
+    if config.incremental:
+        incremental_update_vectorstore(config)
+        return
 
     vectorstore = get_vectorstore(config)
     rag_chain = create_chat_chain(config, vectorstore)

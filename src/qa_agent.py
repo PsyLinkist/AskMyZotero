@@ -17,7 +17,6 @@ from src.answer_prompts import ACADEMIC_RAG_SYSTEM_PROMPT, DIRECT_ANSWER_HUMAN_P
 from src.config import AppConfig
 from src.domain_models import QueryBundle
 from src.indexer import build_llm, get_vectorstore
-from src.manifest import prepare_manifest_snapshot
 from src.metadata_store import MetadataStore
 from src.prompt_logger import save_prompt_log
 
@@ -248,7 +247,6 @@ class ZoteroAgent:
     def __init__(self, config: AppConfig):
         print("Initializing Zotero Agent...")
         self.config = config
-        prepare_manifest_snapshot(self.config)
         self.vectorstore = get_vectorstore(self.config)
         self.metadata_store = MetadataStore(self.config.metadata_db_path)
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.config.top_k})
@@ -508,6 +506,7 @@ class ZoteroAgent:
         total_index_docs = self._estimate_vectorstore_doc_count()
         candidate_scope = self.metadata_store.resolve_candidate_scope(query_bundle.filters)
         candidate_row_ids = candidate_scope["faiss_row_ids"] if query_bundle.filters else None
+        active_chunk_ids = self.metadata_store.get_active_chunk_ids()
         answer_style = str(query_bundle.answer_plan.get("style", "direct_answer"))
         retrieve_mode = str(query_bundle.search_plan.get("retrieve_mode", "single_paper_evidence"))
         if answer_style == "paper_list" or retrieve_mode == "paper_lookup":
@@ -533,6 +532,7 @@ class ZoteroAgent:
             "total_kept_hits": 0,
             "rejection_counts": {
                 "deduplicated": 0,
+                "inactive": 0,
             },
         }
         if query_bundle.filters and not candidate_row_ids:
@@ -541,11 +541,12 @@ class ZoteroAgent:
             self._log_hard_filter_diagnostics(query_bundle.raw_query, diagnostics)
             return []
         for rewritten_query in query_bundle.rewritten_queries[:3]:
+            search_k = retrieve_k * 3 if active_chunk_ids and candidate_row_ids is None else retrieve_k
             if candidate_row_ids is None:
-                docs = self.vectorstore.similarity_search_with_score(rewritten_query, k=retrieve_k)
+                docs = self.vectorstore.similarity_search_with_score(rewritten_query, k=search_k)
                 search_scope = "fullindex"
             else:
-                docs = self._similarity_search_with_score_in_subset(rewritten_query, candidate_row_ids, retrieve_k)
+                docs = self._similarity_search_with_score_in_subset(rewritten_query, candidate_row_ids, search_k)
                 search_scope = "subindex"
             diagnostics["total_raw_hits"] += len(docs)
             scored_docs: list[tuple[Any, float]] = []
@@ -562,6 +563,7 @@ class ZoteroAgent:
                 "kept_hits": 0,
                 "rejected": {
                     "deduplicated": 0,
+                    "inactive": 0,
                 },
             }
             scored_docs.sort(key=lambda item: item[1], reverse=True)
@@ -570,6 +572,10 @@ class ZoteroAgent:
                 chunk_id = str(metadata.get("chunk_id") or "").strip()
                 if not chunk_id:
                     chunk_id = f"{metadata.get('source')}::{metadata.get('page')}::{len(merged_docs)}"
+                if active_chunk_ids and chunk_id not in active_chunk_ids:
+                    diagnostics["rejection_counts"]["inactive"] += 1
+                    per_query_stats["rejected"]["inactive"] += 1
+                    continue
                 if chunk_id in seen_chunk_ids:
                     diagnostics["rejection_counts"]["deduplicated"] += 1
                     per_query_stats["rejected"]["deduplicated"] += 1

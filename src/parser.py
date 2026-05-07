@@ -426,3 +426,36 @@ def load_or_create_splits(config: AppConfig) -> list[Document]:
         pickle.dump(splits, f)
     print("✅ 文本块缓存保存成功。")
     return splits
+
+
+def load_splits_cache(cache_path: Path) -> list[Document]:
+    """Load cached chunk documents if the cache exists."""
+    if not cache_path.exists():
+        return []
+    with open(cache_path, "rb") as f:
+        return pickle.load(f)
+
+
+def save_splits_cache(cache_path: Path, splits: list[Document]) -> None:
+    """Persist chunk documents to the standard splits cache."""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "wb") as f:
+        pickle.dump(splits, f)
+
+
+def parse_pdf_files_to_splits(
+    pdf_files: list[PdfFileInfo],
+    config: AppConfig,
+    attachment_metadata: dict[str, dict] | None = None,
+) -> list[Document]:
+    """Parse and split only the provided PDF files."""
+    if not pdf_files:
+        return []
+    callback = getattr(config, "progress_callback", None)
+    docs = load_pdf_documents_from_files(
+        pdf_files,
+        attachment_metadata=attachment_metadata,
+        progress_callback=callback,
+    )
+    splits = split_documents(docs, config.chunk_size, config.chunk_overlap)
+    return enrich_split_metadata(splits, attachment_metadata=attachment_metadata)

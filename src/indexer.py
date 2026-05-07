@@ -12,8 +12,10 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 from src.config import AppConfig
+from src.manifest import diff_manifest_files, load_manifest, save_manifest, update_manifest_snapshot
 from src.metadata_store import rebuild_metadata_store
-from src.parser import load_or_create_splits
+from src.parser import load_or_create_splits, load_splits_cache, parse_pdf_files_to_splits, save_splits_cache
+from src.scanner import load_attachment_metadata, print_scan_summary, scan_pdf_files
 
 
 def build_embeddings(config: AppConfig) -> OpenAIEmbeddings:
@@ -133,6 +135,82 @@ def build_vectorstore_from_splits(config: AppConfig, splits) -> FAISS:
     print(f"🎉 向量数据库构建并保存完成: {config.db_save_path}")
     return vectorstore
 
+
+def _load_vectorstore(config: AppConfig, embeddings: OpenAIEmbeddings) -> FAISS:
+    return FAISS.load_local(
+        str(config.db_save_path),
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+
+
+def _split_rel_path(split: Any) -> str:
+    metadata = dict(getattr(split, "metadata", {}) or {})
+    return str(metadata.get("rel_path") or "").replace("\\", "/")
+
+
+def incremental_update_vectorstore(config: AppConfig) -> FAISS:
+    """Append new/modified PDFs and tombstone removed/old chunks via active metadata."""
+    ensure_rebuild_if_needed(config)
+    embeddings = build_embeddings(config)
+    if not config.db_save_path.exists() or not config.splits_cache_path.exists():
+        print("♻️ 缺少现有索引或 splits cache，回退到全量构建。")
+        splits = load_or_create_splits(config)
+        vectorstore = build_vectorstore_from_splits(config, splits)
+        rebuild_metadata_store(config.metadata_db_path, splits, vectorstore=vectorstore)
+        pdf_files = scan_pdf_files(config.zotero_path)
+        manifest = update_manifest_snapshot(load_manifest(config.manifest_path), config.zotero_path, pdf_files)
+        save_manifest(config.manifest_path, manifest)
+        return vectorstore
+
+    print("🔎 正在扫描 Zotero PDF 增量变化...")
+    pdf_files = scan_pdf_files(config.zotero_path)
+    print_scan_summary(pdf_files)
+    old_manifest = load_manifest(config.manifest_path)
+    current_manifest = update_manifest_snapshot(load_manifest(config.manifest_path), config.zotero_path, pdf_files)
+    diff = diff_manifest_files(old_manifest.get("files", {}), current_manifest.get("files", {}))
+    changed_paths = set(diff["added"]) | set(diff["modified"])
+    removed_paths = set(diff["removed"])
+    print(
+        "🧾 增量扫描结果："
+        f"新增 {len(diff['added'])}，修改 {len(diff['modified'])}，删除 {len(diff['removed'])}。"
+    )
+
+    vectorstore = _load_vectorstore(config, embeddings)
+    splits = load_splits_cache(config.splits_cache_path)
+    if not changed_paths and not removed_paths:
+        print("✅ 未检测到 PDF 文件变化，刷新 manifest 和 metadata 后结束。")
+        rebuild_metadata_store(config.metadata_db_path, splits, vectorstore=vectorstore)
+        save_manifest(config.manifest_path, current_manifest)
+        return vectorstore
+
+    active_splits = [
+        split
+        for split in splits
+        if _split_rel_path(split) not in changed_paths and _split_rel_path(split) not in removed_paths
+    ]
+    pdf_by_rel_path = {item.rel_path: item for item in pdf_files}
+    changed_pdf_files = [pdf_by_rel_path[rel_path] for rel_path in sorted(changed_paths) if rel_path in pdf_by_rel_path]
+    attachment_metadata = load_attachment_metadata(config.zotero_path) if changed_pdf_files else {}
+    new_splits = parse_pdf_files_to_splits(
+        changed_pdf_files,
+        config,
+        attachment_metadata=attachment_metadata,
+    )
+    if new_splits:
+        print(f"☁️ 正在为 {len(new_splits)} 个新增/更新文本块追加向量...")
+        vectorstore.add_documents(new_splits)
+        vectorstore.save_local(str(config.db_save_path))
+    updated_splits = active_splits + new_splits
+    save_splits_cache(config.splits_cache_path, updated_splits)
+    rebuild_metadata_store(config.metadata_db_path, updated_splits, vectorstore=vectorstore)
+    save_manifest(config.manifest_path, current_manifest)
+    print(
+        "✅ 增量索引更新完成："
+        f"active chunks {len(updated_splits)}，append chunks {len(new_splits)}，removed files {len(removed_paths)}。"
+    )
+    return vectorstore
+
 def get_vectorstore(config: AppConfig) -> FAISS:
     """优先加载本地索引，不存在时重新构建。"""
     ensure_rebuild_if_needed(config)
@@ -148,6 +226,9 @@ def get_vectorstore(config: AppConfig) -> FAISS:
         )
     else:
         vectorstore = build_vectorstore_from_splits(config, splits)
+        pdf_files = scan_pdf_files(config.zotero_path)
+        manifest = update_manifest_snapshot(load_manifest(config.manifest_path), config.zotero_path, pdf_files)
+        save_manifest(config.manifest_path, manifest)
 
     rebuild_metadata_store(config.metadata_db_path, splits, vectorstore=vectorstore)
     return vectorstore

@@ -39,6 +39,11 @@ AskMyZotero 是一个面向本地 Zotero 文献库的 RAG 问答项目。
   - `Results(top-k)`
 - 支持在前端打开本地 PDF 文件
 - 支持后台重建索引与进度查询
+- 支持显式增量更新索引：
+  - 命令行 `python main.py --incremental`
+  - 前端主页面右上角“同步”按钮
+  - 后端 `/api/sync` 后台任务与 `/api/sync/status` 状态查询
+- 增量更新采用 tombstone 策略：新增/修改 PDF 追加新向量，删除/修改旧 chunk 从 active metadata 中移除，检索时过滤 inactive chunk
 
 ## 检索链路
 
@@ -127,6 +132,7 @@ python main.py
 ```bash
 python main.py --question "这篇论文的方法分几个阶段？"
 python main.py --rebuild
+python main.py --incremental
 ```
 
 ### 一键打包
@@ -220,6 +226,8 @@ Web 模式下，运行时配置默认会写入：
 
 - 除非明确要全量重建，否则优先复用这些产物
 - 如果修改了 `scanner.py`、`parser.py`、`metadata_store.py` 的数据结构，通常需要重新生成相关缓存或索引
+- 日常新增、删除或修改 Zotero PDF 后，可以优先使用前端“同步”按钮或 `python main.py --incremental` 执行增量更新
+- 当前增量更新不会物理删除 FAISS 中的旧向量，而是通过 `metadata.db` active chunk 集合过滤；长期运行后如果 inactive 向量过多，后续会引入 compact rebuild
 
 ## API 概览
 
@@ -245,6 +253,10 @@ Web 模式下，运行时配置默认会写入：
   后台触发重建
 - `GET /api/rebuild/status`
   查询重建状态和进度
+- `POST /api/sync`
+  后台触发增量同步索引
+- `GET /api/sync/status`
+  查询增量同步状态和进度
 
 ## 项目结构
 
@@ -272,7 +284,9 @@ AskMyZotero/
 │   ├── 20260423_paper_lookup问题与改造checklist.md
 │   ├── 20260423_chunk限制与关键chunk选择TODO.md
 │   ├── 20260503_基线评测与检索瓶颈.md
-│   └── 20260501_后续目标checklist.md
+│   ├── 20260501_后续目标checklist.md
+│   ├── 20260505_借鉴RAG-Assistant改造方案.md
+│   └── 20260507_增量更新索引方案.md
 ├── src/
 │   ├── aggregator.py
 │   ├── api_models.py

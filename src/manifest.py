@@ -62,6 +62,32 @@ def update_manifest_snapshot(
     return manifest
 
 
+def diff_manifest_files(
+    old_files: dict[str, dict[str, Any]] | None,
+    new_files: dict[str, dict[str, Any]] | None,
+) -> dict[str, list[str]]:
+    """Compare two manifest file maps and classify path-level changes."""
+    old_files = old_files or {}
+    new_files = new_files or {}
+    old_paths = set(old_files)
+    new_paths = set(new_files)
+    added = sorted(new_paths - old_paths)
+    removed = sorted(old_paths - new_paths)
+    modified: list[str] = []
+    for rel_path in sorted(old_paths & new_paths):
+        old_record = old_files.get(rel_path) or {}
+        new_record = new_files.get(rel_path) or {}
+        if old_record.get("size") != new_record.get("size") or old_record.get("mtime") != new_record.get("mtime"):
+            modified.append(rel_path)
+    unchanged = sorted(new_paths - set(added) - set(modified))
+    return {
+        "added": added,
+        "modified": modified,
+        "removed": removed,
+        "unchanged": unchanged,
+    }
+
+
 def prepare_manifest_snapshot(config) -> None:
     """扫描当前文献目录，并将结果写入 manifest.json。"""
     pdf_files = scan_pdf_files(config.zotero_path)

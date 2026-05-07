@@ -22,6 +22,7 @@ from src.api_models import (
     RagConfigResponse,
 )
 from src.config import parse_args, resolve_config
+from src.indexer import incremental_update_vectorstore
 from src.qa_agent import ZoteroAgent
 
 # yzx 索引重建(P0)
@@ -412,7 +413,16 @@ GLOBAL_CONTEXT: dict = {
     "agent": None,
     "init_error": "",
     "rebuild_status": "idle", # 取值: idle, processing, success, failed
-    "rebuild_error": ""
+    "rebuild_error": "",
+    "sync_status": "idle", # 取值: idle, processing, success, failed
+    "sync_error": "",
+    "sync_progress": {
+        "stage": "",
+        "current": 0,
+        "total": 0,
+        "percent": 0,
+        "message": ""
+    }
 }
 
 # 修改 init_agent 函数，支持强制重建参数
@@ -497,6 +507,72 @@ def task_rebuild_index():
     except Exception as e:
         GLOBAL_CONTEXT["rebuild_status"] = "failed"
         GLOBAL_CONTEXT["rebuild_error"] = str(e)
+
+
+def _update_sync_progress(stage: str, current: int, total: int, message: str = ""):
+    percent = int((current / total * 100)) if total > 0 else 0
+    GLOBAL_CONTEXT["sync_progress"] = {
+        "stage": stage,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "message": message
+    }
+
+
+@app.post("/api/sync")
+async def trigger_incremental_sync(background_tasks: BackgroundTasks):
+    if GLOBAL_CONTEXT.get("rebuild_status") == "processing":
+        return {"success": False, "message": "索引重建正在进行中，请稍后再同步"}
+    if GLOBAL_CONTEXT.get("sync_status") == "processing":
+        return {"success": False, "message": "增量同步正在进行中，请勿重复提交"}
+
+    background_tasks.add_task(task_incremental_sync)
+    return {"success": True, "message": "已启动后台增量同步任务"}
+
+
+@app.get("/api/sync/status")
+async def get_incremental_sync_status():
+    return {
+        "status": GLOBAL_CONTEXT.get("sync_status", "idle"),
+        "error": GLOBAL_CONTEXT.get("sync_error", ""),
+        "progress": GLOBAL_CONTEXT.get("sync_progress", {})
+    }
+
+
+def task_incremental_sync():
+    GLOBAL_CONTEXT["sync_status"] = "processing"
+    GLOBAL_CONTEXT["sync_error"] = ""
+    GLOBAL_CONTEXT["sync_progress"] = {
+        "stage": "starting",
+        "current": 0,
+        "total": 0,
+        "percent": 0,
+        "message": "准备开始增量同步..."
+    }
+    try:
+        args = parse_args()
+        config = resolve_config(args)
+        config.incremental = True
+        config.progress_callback = _update_sync_progress
+
+        print("🔄 触发增量同步模式...")
+        incremental_update_vectorstore(config)
+        GLOBAL_CONTEXT["sync_progress"] = {
+            "stage": "loading",
+            "current": 1,
+            "total": 1,
+            "percent": 100,
+            "message": "正在重新加载问答引擎..."
+        }
+        GLOBAL_CONTEXT["agent"] = ZoteroAgent(config)
+        GLOBAL_CONTEXT["init_error"] = ""
+        GLOBAL_CONTEXT["sync_status"] = "success"
+        GLOBAL_CONTEXT["sync_progress"]["message"] = "增量同步完成"
+    except Exception as e:
+        GLOBAL_CONTEXT["sync_status"] = "failed"
+        GLOBAL_CONTEXT["sync_error"] = str(e)
+        GLOBAL_CONTEXT["sync_progress"]["message"] = f"增量同步失败：{e}"
 """
 PO到这结束
 """

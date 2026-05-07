@@ -62,6 +62,11 @@ body {
   font-weight: 400;
   margin-top: 2px;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .el-button {
   display: inline-flex;
   justify-content: center;
@@ -80,6 +85,15 @@ body {
   transition: all 0.2s;
 }
 .el-button:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light);
+}
+.el-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.sync-button.is-running {
   color: var(--el-color-primary);
   border-color: var(--el-color-primary);
   background-color: var(--el-color-primary-light);
@@ -658,10 +672,16 @@ body {
     <div class="header-title">AskMyZotero</div>
     <div class="header-title-sub">基于大语言模型与本地文献库的智能问答</div>
   </div>
-  <button class="el-button" onclick="window.location.href='settings.html?returnTo=main'">
-    <svg style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-    设置
-  </button>
+  <div class="header-actions">
+    <button class="el-button sync-button" id="syncBtn" type="button" onclick="runIncrementalSync()">
+      <svg style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-15.1 6.6"></path><path d="M3 12A9 9 0 0 1 18.1 5.4"></path><path d="M3 19v-5h5"></path><path d="M21 5v5h-5"></path></svg>
+      同步
+    </button>
+    <button class="el-button" onclick="window.location.href='settings.html?returnTo=main'">
+      <svg style="width:14px;height:14px;margin-right:6px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      设置
+    </button>
+  </div>
 </div>
 
 <div class="notice-box" id="configNotice"></div>
@@ -780,6 +800,7 @@ const quickActions = document.getElementById('quickActions');
 const appMain = document.querySelector('.app-main');
 const filtersToggleBtn = document.getElementById('filtersToggleBtn');
 const sourcesToggleBtn = document.getElementById('sourcesToggleBtn');
+const syncBtn = document.getElementById('syncBtn');
 const RECENT_SEARCHES_KEY = 'askmyzoteroRecentSearches';
 const PANEL_STATE_KEY = 'askmyzoteroPanelState';
 const MAX_RECENT_SEARCHES = 2;
@@ -953,6 +974,94 @@ function clearAllFilters() {
   tagFilter.value = '';
   collectionFilter.value = '';
   resultsFilter.value = '20';
+}
+
+function getApiBaseUrl() {
+  try {
+    const savedConfig = JSON.parse(localStorage.getItem('zoteroRagConfig') || '{}');
+    return (savedConfig.api?.url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  } catch (_) {
+    return 'http://127.0.0.1:8000';
+  }
+}
+
+function setSyncButtonState(label, running = false) {
+  if (!syncBtn) return;
+  syncBtn.disabled = running;
+  syncBtn.classList.toggle('is-running', running);
+  syncBtn.lastChild.textContent = ` ${label}`;
+}
+
+function showNotice(message, type = 'error') {
+  const notice = document.getElementById('configNotice');
+  notice.style.display = 'block';
+  if (type === 'success') {
+    notice.style.backgroundColor = '#f0f9eb';
+    notice.style.color = '#67c23a';
+    notice.style.borderBottomColor = '#e1f3d8';
+  } else if (type === 'info') {
+    notice.style.backgroundColor = '#ecf5ff';
+    notice.style.color = '#409eff';
+    notice.style.borderBottomColor = '#d9ecff';
+  } else {
+    notice.style.backgroundColor = '#fef0f0';
+    notice.style.color = '#f56c6c';
+    notice.style.borderBottomColor = '#fde2e2';
+  }
+  notice.innerHTML = message;
+}
+
+async function pollIncrementalSync(apiBaseUrl) {
+  const response = await fetch(`${apiBaseUrl}/api/sync/status`);
+  const data = await response.json();
+  const progress = data.progress || {};
+  const message = progress.message || '正在同步 Zotero 文献库...';
+
+  if (data.status === 'processing') {
+    const percentText = Number.isFinite(progress.percent) && progress.percent > 0 ? `（${progress.percent}%）` : '';
+    setSyncButtonState('同步中...', true);
+    showNotice(`${escapeHtml(message)}${percentText}`, 'info');
+    setTimeout(() => pollIncrementalSync(apiBaseUrl).catch(handleSyncPollError), 1500);
+    return;
+  }
+
+  if (data.status === 'success') {
+    setSyncButtonState('已同步', false);
+    showNotice('增量同步完成，新的文献变化已加载到问答引擎。', 'success');
+    setTimeout(() => {
+      setSyncButtonState('同步', false);
+      document.getElementById('configNotice').style.display = 'none';
+    }, 3000);
+    return;
+  }
+
+  setSyncButtonState('同步', false);
+  showNotice(`增量同步失败：${escapeHtml(data.error || '未知错误')}`, 'error');
+}
+
+function handleSyncPollError() {
+  setSyncButtonState('同步', false);
+  showNotice('无法获取同步状态，请确认后端服务仍在运行。', 'error');
+}
+
+async function runIncrementalSync() {
+  const apiBaseUrl = getApiBaseUrl();
+  setSyncButtonState('同步中...', true);
+  showNotice('正在启动增量同步...', 'info');
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/sync`, { method: 'POST' });
+    const data = await response.json();
+    if (!data.success) {
+      setSyncButtonState('同步', false);
+      showNotice(escapeHtml(data.message || '增量同步启动失败'), 'error');
+      return;
+    }
+    await pollIncrementalSync(apiBaseUrl);
+  } catch (_) {
+    setSyncButtonState('同步', false);
+    showNotice('无法连接到后端服务器，请先确认服务已启动。', 'error');
+  }
 }
 
 // 格式化文本（加粗、引用、换行）

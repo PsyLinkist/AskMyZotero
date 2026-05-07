@@ -207,6 +207,18 @@ class MetadataStore:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
 
+    def get_active_chunk_ids(self) -> set[str]:
+        """Return chunk ids currently present in metadata.db."""
+        if not self.db_path.exists():
+            return set()
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT chunk_id FROM chunks")
+            return {str(row[0]) for row in cur.fetchall() if str(row[0] or "").strip()}
+        finally:
+            conn.close()
+
     def resolve_candidate_scope(self, filters: dict[str, Any]) -> dict[str, Any]:
         normalized_filters = filters if isinstance(filters, dict) else {}
         if not normalized_filters:

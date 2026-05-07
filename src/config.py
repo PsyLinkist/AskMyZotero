@@ -39,6 +39,7 @@ class AppConfig:
     max_completion_tokens: Optional[int]
 
     rebuild: bool
+    incremental: bool
     question: Optional[str]
     no_proxy: Optional[str]
 
@@ -62,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--work-dir", type=str, default=".askmyzotero", help="工作目录")
     parser.add_argument("--index-name", type=str, default="default", help="索引名称，用于区分不同配置")
     parser.add_argument("--rebuild", action="store_true", help="强制删除旧索引与缓存并重建")
+    parser.add_argument("--incremental", action="store_true", help="显式执行增量索引更新后退出")
 
     parser.add_argument("--chunk-size", type=int, default=1000, help="文本块大小")
     parser.add_argument("--chunk-overlap", type=int, default=150, help="文本块重叠")
@@ -148,6 +150,7 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         "temperature": yaml_config.get("temperature") or args.temperature,
         "max_completion_tokens": yaml_config.get("max_completion_tokens") or args.max_completion_tokens,
         "rebuild": args.rebuild if args.rebuild else yaml_config.get("rebuild", False),
+        "incremental": bool(args.incremental or yaml_config.get("incremental", False)),
         "question": args.question,
         "no_proxy": args.no_proxy or os.getenv("NO_PROXY"),
     }
